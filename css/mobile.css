@@ -1,76 +1,70 @@
-/* css/mobile.css — 手机横屏专版布局(覆盖 style.css;只调布局,交互不变)*/
+/* css/mobile.css — 手机版布局(竖屏 + 横屏都支持,自动适配,不强制旋转)*/
 
 html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { -webkit-text-size-adjust: 100%; touch-action: manipulation; }
+#rotate { display: none; }                 /* 不再强制横屏 */
 
-#rotate { display: none; }
+/* ---------- 通用(两种方向共用)---------- */
+#app { max-width: none; height: 100vh; height: 100dvh; min-height: 0; padding: 0 6px; }
 
-/* ---------- 竖屏:强制提示转横屏,隐藏游戏 ---------- */
-@media (orientation: portrait) {
-  #app, #overlay { display: none !important; }
-  #rotate {
-    display: flex; position: fixed; inset: 0; z-index: 200;
-    flex-direction: column; align-items: center; justify-content: center; gap: 16px;
-    background: radial-gradient(120% 120% at 50% 0%, var(--felt), #0a3b25);
-    color: var(--ink); text-align: center; padding: 24px;
-  }
-  #rotate .ico { font-size: 60px; animation: rotateHint 1.8s ease-in-out infinite; }
-  #rotate .t1 { font-size: 20px; font-weight: 800; color: var(--gold); letter-spacing: 2px; }
-  #rotate .t2 { font-size: 13px; opacity: .8; }
-}
-@keyframes rotateHint { 0%, 60%, 100% { transform: rotate(0); } 30% { transform: rotate(-90deg); } }
+#topbar { padding: 5px 8px; gap: 8px; }
+.brand { font-size: 15px; letter-spacing: 1px; }
+#status { font-size: 10.5px; line-height: 1.3; }
+.btn { padding: 6px 11px; font-size: 12px; border-radius: 7px; }
 
-/* ---------- 横屏:紧凑牌桌 ---------- */
+.opp { padding: 4px 9px; border-radius: 8px; }
+.opp .name { font-size: 12px; }
+.opp .count { font-size: 10px; margin-top: 1px; }
+.opp .role { font-size: 9px; padding: 1px 5px; }
+
+#table { padding: 2px 8px; gap: 3px; min-height: 0; }
+#trick { gap: 10px; min-height: 0; }
+.trickplay .who { font-size: 10px; }
+.trickplay .cards .card { margin-left: -12px; }
+#message { font-size: 11px; min-height: 13px; }
+#captured { gap: 6px; }
+.cap-label { font-size: 11px; }
+.cap-cards .card { margin-left: -16px; }
+
+/* 牌(角标式,不重叠也好认)*/
+.card { width: 42px; height: 58px; border-radius: 6px; }
+.card .idx .r { font-size: 13px; } .card .idx .s { font-size: 9px; } .card .big { font-size: 15px; }
+.card.small { width: 30px; height: 42px; }
+.card.small .idx .r { font-size: 9px; } .card.small .idx .s { font-size: 7px; } .card.small .big { font-size: 11px; }
+
+#me-meta { font-size: 11px; padding: 0 4px 1px; gap: 6px; }
+/* 手牌:不重叠、整张排开、自动换行;选中只抬起 + 金边 */
+#hand { flex-wrap: wrap; justify-content: center; align-content: flex-start; gap: 4px 3px; margin: 0 auto; overflow: visible; }
+#hand .card { margin: 0; }
+#hand .card.sel { transform: translateY(-9px); z-index: 5; box-shadow: 0 0 0 2px var(--gold), 0 7px 14px rgba(0, 0, 0, .5); }
+
+#actionbar { gap: 8px; min-height: 0; }
+#actionbar .hint { font-size: 11px; width: auto; }
+.suitbtn { width: 42px; height: 42px; font-size: 18px; }
+
+#dialog { padding: 16px 22px; max-width: 480px; max-height: 86vh; overflow-y: auto; border-radius: 14px; text-align: center; }
+#dialog h2 { font-size: 20px; margin-bottom: 2px; }
+#dialog p { font-size: 12px; margin: 4px 0; }
+#dialog .row { margin-top: 14px; justify-content: center; gap: 14px; }
+#dialog .btn.big { padding: 11px 30px; font-size: 16px; }
+.result-line { font-size: 12px; padding: 3px 0; }
+
+/* ---------- 横屏:对家一排在上,手牌约两行 ---------- */
 @media (orientation: landscape) {
-  #app { max-width: none; height: 100vh; height: 100dvh; min-height: 0; padding: 0 8px; }
-
-  #topbar { padding: 4px 8px; gap: 8px; border-bottom-width: 1px; }
-  .brand { font-size: 15px; letter-spacing: 1px; }
-  #status { font-size: 10.5px; line-height: 1.3; }
-  .btn { padding: 6px 11px; font-size: 12px; border-radius: 7px; }
-
   #opponents { padding: 4px 8px 0; gap: 8px; }
-  .opp { padding: 4px 9px; border-radius: 8px; max-width: 200px; }
-  .opp .name { font-size: 12px; }
-  .opp .count { font-size: 10px; margin-top: 1px; }
-  .opp .role { font-size: 9px; padding: 1px 5px; }
+  .opp { max-width: 200px; }
+  #myhand { padding: 1px 6px 0; flex: 0 1 auto; }
+  #hand { padding: 9px 4px 2px; max-width: 760px; }  /* 限宽 → 两行 */
+  #actionbar { padding: 4px 8px 7px; }
+}
 
-  #table { padding: 2px 8px; gap: 3px; min-height: 0; }
-  #trick { gap: 10px; min-height: 0; }
-  .trickplay .who { font-size: 10px; }
-  .trickplay .cards .card { margin-left: -12px; }
-  #message { font-size: 11px; min-height: 13px; }
-  #captured { gap: 6px; }
-  .cap-label { font-size: 11px; }
-  .cap-cards .card { margin-left: -16px; }
-
-  /* 牌(角标式,不重叠也好认)*/
-  .card { width: 42px; height: 58px; border-radius: 6px; }
-  .card .idx .r { font-size: 13px; } .card .idx .s { font-size: 9px; } .card .big { font-size: 15px; }
-  .card.small { width: 30px; height: 42px; }
-  .card.small .idx .r { font-size: 9px; } .card.small .idx .s { font-size: 7px; } .card.small .big { font-size: 11px; }
-
-  #myhand { padding: 1px 6px 0; flex: 0 1 auto; min-height: 0; overflow: visible; }
-  #me-meta { font-size: 11px; padding: 0 4px 1px; gap: 6px; }
-  /* 手牌:不重叠、整张排开、两行居中;每张都看得全、好点 */
-  #hand { padding: 9px 4px 2px; flex-wrap: wrap; justify-content: center; align-content: flex-start;
-          gap: 4px 3px; max-width: 760px; margin: 0 auto; overflow: visible; }
-  #hand .card { margin: 0; }
-  /* 选中:只轻轻抬起 + 金边,不放大、不盖住旁边的牌 */
-  #hand .card.sel {
-    transform: translateY(-9px); z-index: 5;
-    box-shadow: 0 0 0 2px var(--gold), 0 7px 14px rgba(0, 0, 0, .5);
-  }
-
-  #actionbar { padding: 4px 8px 7px; gap: 8px; min-height: 0; }
-  #actionbar .hint { font-size: 11px; width: auto; }
-  .suitbtn { width: 42px; height: 42px; font-size: 18px; }
-
-  /* 弹窗:紧凑、居中、可滚动 */
-  #dialog { padding: 16px 22px; max-width: 480px; max-height: 86vh; overflow-y: auto; border-radius: 14px; text-align: center; }
-  #dialog h2 { font-size: 20px; margin-bottom: 2px; }
-  #dialog p { font-size: 12px; margin: 4px 0; }
-  #dialog .row { margin-top: 14px; justify-content: center; gap: 14px; }
-  #dialog .btn.big { padding: 11px 30px; font-size: 16px; }
-  .result-line { font-size: 12px; padding: 3px 0; }
+/* ---------- 竖屏:对家在上,手牌多行铺满窄屏 ---------- */
+@media (orientation: portrait) {
+  #app { padding: 0 4px; }
+  #opponents { padding: 6px 6px 2px; gap: 6px; }
+  .opp { flex: 1; }
+  #table { flex: 0 1 auto; }                 /* 竖屏牌桌不抢占,把空间留给手牌 */
+  #myhand { padding: 4px 2px 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: flex-end; }
+  #hand { padding: 8px 2px 4px; max-width: 100%; }   /* 满宽 → 自动多行 */
+  #actionbar { padding: 8px 8px 12px; }
 }

@@ -79,7 +79,7 @@ writeFileSync(join(dir, '飙分-手机版.html'), page({
   title: '飙分 · 手机版',
   viewport: 'width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1',
   css: styleCss + '\n\n' + mobileCss,
-  body: rotateBody + appBody + '\n' + lockScript,
+  body: appBody,
 }));
 
 console.log('✅ 打包完成:飙分-电脑版.html / 飙分-手机版.html');
