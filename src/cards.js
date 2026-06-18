@@ -49,15 +49,16 @@ export function cardGroup(card, trumpSuit) {
 }
 
 // 组内大小(越大越强)。
-// 主牌统一刻度:大王118 > 小王117 > [116空挡] > 主3 115 > 副3 114 > 主2 113 > 副2 112 > 主A 111 …… 主4 101。
-// 116 的空挡让“王”只能和“王”相连(王孤岛):主3(115) 与 小王(117) 差 2,不相邻。
+// 主牌统一刻度:大王118 > 小王117 > [116空挡] > 3:115 > 2:114 > 主A 113 > 主K 112 …… 主4 103。
+// 所有 3 同一档、所有 2 同一档(不分主副)。3 与 2 相邻 → ♥3♥3+♥2♥2 是拖拉机;
+// 同花色才成对,不同花色的两对 3(同档)不连。116 空挡让“王”只和“王”连(王孤岛):3(115) 与 小王(117) 差 2。
 export function strength(card, trumpSuit) {
   if (cardGroup(card, trumpSuit) !== 'TRUMP') return card.rank;   // 边牌:4..14
   if (card.rank === BIG_JOKER) return 118;
   if (card.rank === SMALL_JOKER) return 117;
-  if (card.rank === 3) return card.suit === trumpSuit ? 115 : 114; // 主3 / 副3
-  if (card.rank === 2) return card.suit === trumpSuit ? 113 : 112; // 主2 / 副2
-  return card.rank + 97;                                           // 主花色 4..14(A) → 101..111
+  if (card.rank === 3) return 115;   // 所有 3 同级(常主)
+  if (card.rank === 2) return 114;   // 所有 2 同级(常主)
+  return card.rank + 99;             // 主花色 4..14(A) → 103..113
 }
 
 export function shuffle(cards, rng = Math.random) {
