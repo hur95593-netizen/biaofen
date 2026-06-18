@@ -244,10 +244,16 @@ function deal(cards, players) {
 // 整理手牌(展示用):主牌在前,组内从大到小
 function sortHand(hand, trumpSuit) {
   const groupOrder = { TRUMP: 0, S: 1, H: 2, D: 3, C: 4 };
+  const suitOrder = { S: 0, H: 1, D: 2, C: 3, JOKER: 4 };
   return hand.slice().sort((a, b) => {
     const ga = cardGroup(a, trumpSuit), gb = cardGroup(b, trumpSuit);
     if (groupOrder[ga] !== groupOrder[gb]) return groupOrder[ga] - groupOrder[gb];
-    return strength(b, trumpSuit) - strength(a, trumpSuit);
+    const sd = strength(b, trumpSuit) - strength(a, trumpSuit);
+    if (sd !== 0) return sd;
+    // 同强度(如不同花色的 3)→ 按花色、点数、copy 归拢,让相同的牌永远相邻(对子不被拆开)
+    if (a.suit !== b.suit) return suitOrder[a.suit] - suitOrder[b.suit];
+    if (a.rank !== b.rank) return b.rank - a.rank;
+    return a.copy - b.copy;
   });
 }
 
