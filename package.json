@@ -1,0 +1,10 @@
+{
+  "name": "biaofen",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "description": "飙分 — 纸牌游戏(纯前端,vs 电脑AI)",
+  "scripts": {
+    "test": "node test/engine.test.js"
+  }
+}

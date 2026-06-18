@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+  <title>飙分 · 手机版</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+  <!-- 竖屏时显示,提示转横屏 -->
+  <div id="rotate">
+    <div class="ico">📱</div>
+    <div class="t1">请横屏使用</div>
+    <div class="t2">把手机横过来开始游戏</div>
+  </div>
+
+  <!-- 与桌面版完全相同的结构(同 ID),复用 src/ui.js,交互一致 -->
+  <div id="app">
+    <header id="topbar">
+      <span class="brand">飙分</span>
+      <span id="status">—</span>
+      <button id="newgame" class="btn ghost">新牌局</button>
+    </header>
+    <section id="opponents"></section>
+    <section id="table">
+      <div id="captured" class="empty"></div>
+      <div id="trick"></div>
+      <div id="message"></div>
+    </section>
+    <section id="myhand">
+      <div id="me-meta"></div>
+      <div id="hand"></div>
+    </section>
+    <section id="actionbar"></section>
+  </div>
+
+  <div id="overlay" class="hidden"><div id="dialog"></div></div>
+
+  <script>
+    // 尽力锁定横屏(支持的浏览器,通常需全屏才生效;不支持的靠 CSS 提示兜底)
+    function tryLockLandscape() {
+      try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); }
+      catch (e) {}
+    }
+    document.addEventListener('click', tryLockLandscape, { once: true });
+  </script>
+  <script type="module" src="src/ui.js"></script>
+</body>
+</html>

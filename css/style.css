@@ -1,0 +1,135 @@
+:root {
+  --felt: #14633f;
+  --felt2: #0e4d31;
+  --card-bg: #fdfdfa;
+  --card-back: #2a4d8f;
+  --red: #d4233b;
+  --black: #1b1b1b;
+  --gold: #ffd76a;
+  --ink: #f3f3ee;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: radial-gradient(120% 120% at 50% 0%, var(--felt) 0%, var(--felt2) 70%, #0a3b25 100%);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+#app { display: flex; flex-direction: column; min-height: 100vh; max-width: 980px; margin: 0 auto; }
+
+#topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.brand { font-weight: 800; letter-spacing: 3px; font-size: 20px; color: var(--gold); }
+#status { flex: 1; opacity: .92; font-size: 14px; }
+
+.btn {
+  border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600;
+  background: var(--gold); color: #3a2c00; cursor: pointer; transition: transform .08s, filter .15s;
+}
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { background: rgba(255,255,255,.14); color: var(--ink); }
+.btn.sm { padding: 6px 10px; font-size: 13px; }
+.btn.big { padding: 11px 26px; font-size: 16px; }
+#dialog .sub { opacity: .85; }
+
+/* 对家 */
+#opponents { display: flex; justify-content: space-around; gap: 10px; padding: 14px 16px 4px; }
+.opp {
+  flex: 1; max-width: 240px; padding: 10px 12px; border-radius: 12px;
+  background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08);
+}
+.opp.turn { box-shadow: 0 0 0 2px var(--gold); background: rgba(255,215,106,.12); }
+.opp .name { font-weight: 700; font-size: 14px; display:flex; justify-content:space-between; align-items:center; }
+.opp .role { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.16); }
+.opp .role.zhuang { background: var(--gold); color:#3a2c00; }
+.opp .count { font-size: 12px; opacity: .8; margin-top: 4px; }
+
+/* 牌桌 */
+#table { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 8px 16px; min-height: 200px; }
+#trick { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; align-items: flex-start; min-height: 96px; }
+.trickplay { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.trickplay .who { font-size: 12px; opacity: .85; }
+.trickplay.win .who { color: var(--gold); font-weight: 700; }
+.trickplay .cards { display: flex; }
+.trickplay .cards .card { margin-left: -16px; }
+.trickplay .cards .card:first-child { margin-left: 0; }
+#message { min-height: 22px; font-size: 14px; color: var(--gold); text-align: center; }
+
+/* 我的信息 + 手牌 */
+#myhand { padding: 6px 12px 4px; }
+#me-meta { display:flex; align-items:center; gap:10px; font-size:13px; padding: 2px 6px 6px; }
+#me-meta .role.zhuang { background: var(--gold); color:#3a2c00; }
+#me-meta .role { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.16); }
+#hand { display: flex; flex-wrap: wrap; justify-content: center; padding: 8px 6px 4px; min-height: 96px; }
+#hand .card { margin-left: -10px; cursor: pointer; }
+#hand .card:first-child { margin-left: 0; }
+#hand .card.sel { transform: translateY(-16px); box-shadow: 0 6px 14px rgba(0,0,0,.4); }
+#hand .card.dim { opacity: .55; }
+
+/* 操作区 */
+#actionbar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center; padding: 10px 16px 20px; min-height: 56px; }
+#actionbar .hint { font-size: 13px; opacity: .9; width: 100%; text-align: center; }
+
+/* 牌 */
+.card {
+  position: relative; width: 50px; height: 70px; border-radius: 7px;
+  background: var(--card-bg); color: var(--black);
+  box-shadow: 0 1px 3px rgba(0,0,0,.35); border: 1px solid #cfcfc7;
+  user-select: none; flex: 0 0 auto; overflow: hidden;
+}
+.card.red { color: var(--red); }
+/* 左上角标:点数 + 花色,叠放时永远可见 */
+.card .idx { position: absolute; top: 2px; left: 3px; display: flex; flex-direction: column; align-items: center; line-height: 1.02; }
+.card .idx .r { font-size: 15px; font-weight: 800; }
+.card .idx .s { font-size: 11px; }
+.card .big { position: absolute; right: 4px; bottom: 2px; font-size: 20px; line-height: 1; }
+.card.small { width: 40px; height: 56px; }
+.card.small .idx .r { font-size: 11px; }
+.card.small .idx .s { font-size: 8px; }
+.card.small .big { font-size: 13px; right: 3px; }
+.card.joker .idx .r { font-size: 12px; }
+.card.joker .big { font-size: 17px; }
+.card.back {
+  background: repeating-linear-gradient(45deg, var(--card-back), var(--card-back) 6px, #36589c 6px, #36589c 12px);
+  border-color: #1c356b;
+}
+.cardpile { display: flex; }
+.cardpile .card { margin-left: -34px; }
+.cardpile .card:first-child { margin-left: 0; }
+
+/* 弹窗 */
+#overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 10; }
+#overlay.hidden { display: none; }
+#dialog { background: #173a2a; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; padding: 22px 26px; max-width: 460px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+#dialog h2 { margin: 0 0 8px; color: var(--gold); }
+#dialog p { margin: 6px 0; font-size: 14px; line-height: 1.5; }
+#dialog .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.suitbtn { font-size: 22px; width: 52px; height: 52px; border-radius: 10px; }
+.suitbtn.red { color: var(--red); }
+.result-line { display:flex; justify-content:space-between; border-bottom:1px dashed rgba(255,255,255,.15); padding:4px 0; font-size:14px; }
+
+/* 主牌高亮(手牌中突出主/副)*/
+#hand .card.trump { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), 0 2px 5px rgba(0,0,0,.4); }
+
+/* 出牌者 / 当前轮到者的角色徽章 */
+.who i { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 999px; margin-left: 4px; vertical-align: middle; }
+.who i.z, .turnwho i { background: var(--gold); color: #3a2c00; font-weight: 700; }
+.who i.x { background: rgba(255,255,255,.2); color: var(--ink); }
+.trickplay.zhuangplay .who { color: var(--gold); }
+.turnwho { color: var(--gold); font-weight: 700; }
+
+/* 闲家捡分展示区 */
+#captured { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+#captured.empty { display: none; }
+.cap-label { font-size: 13px; color: var(--gold); white-space: nowrap; font-weight: 700; }
+.cap-cards { display: flex; flex-wrap: wrap; }
+.cap-cards .card { margin-left: -24px; }
+.cap-cards .card:first-child { margin-left: 0; }
+#kittyreveal { margin: 8px 0 4px; }
+
+.hidden { display: none; }
