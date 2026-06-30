@@ -280,17 +280,30 @@ function cardGroup(card, trumpSuit) {
   return isTrump(card, trumpSuit) ? 'TRUMP' : card.suit;
 }
 
-// 组内大小(越大越强)。
-// 主牌统一刻度:大王118 > 小王117 > [116空挡] > 3:115 > 2:114 > 主A 113 > 主K 112 …… 主4 103。
-// 所有 3 同一档、所有 2 同一档(不分主副)。3 与 2 相邻 → ♥3♥3+♥2♥2 是拖拉机;
-// 同花色才成对,不同花色的两对 3(同档)不连。116 空挡让“王”只和“王”连(王孤岛):3(115) 与 小王(117) 差 2。
+// 组内「比大小」刻度(越大越强)——决定谁压谁。与「拖拉机相邻」是两套规则(见 tractorRank)。
+// 主牌:大王200 > 小王199 > 主3 198 > 副3 197 > 主2 196 > 副2 195 > 主A 194 > 主K 193 …… 主4 184。
+// 即所有 3 > 所有 2;3 内主3>副3、2 内主2>副2(主花色那张更大)。边牌按点数 4..14。
 function strength(card, trumpSuit) {
   if (cardGroup(card, trumpSuit) !== 'TRUMP') return card.rank;   // 边牌:4..14
-  if (card.rank === BIG_JOKER) return 118;
-  if (card.rank === SMALL_JOKER) return 117;
-  if (card.rank === 3) return 115;   // 所有 3 同级(常主)
-  if (card.rank === 2) return 114;   // 所有 2 同级(常主)
-  return card.rank + 99;             // 主花色 4..14(A) → 103..113
+  if (card.rank === BIG_JOKER) return 200;
+  if (card.rank === SMALL_JOKER) return 199;
+  const mainSuit = card.suit === trumpSuit;
+  if (card.rank === 3) return mainSuit ? 198 : 197;   // 主3 > 副3
+  if (card.rank === 2) return mainSuit ? 196 : 195;   // 主2 > 副2(且所有3 > 所有2)
+  return card.rank + 180;            // 主花色 4..14(A) → 184..194(均 < 副2 195)
+}
+
+// 「拖拉机相邻」刻度——只管连不连,与比大小分开。返回 { lane, pos, alt? }:
+//   同 lane(同花色/同孤岛)且位置(pos)差 1 才相连。
+//   主花色:ace-low 自然阶梯 A=1,2=2,3=3,…,K=13;主 A「两头都连」→ pos:1 兼 alt:14(接 2 也接 K)。
+//   王:小王/大王 自成孤岛(lane 'JOKER',pos 16/17 相邻)。边牌:ace-high,pos = 点数 4..14。
+function tractorRank(card, trumpSuit) {
+  if (isJoker(card)) return { lane: 'JOKER', pos: card.rank };          // 16、17 相邻
+  if (isTrump(card, trumpSuit)) {
+    if (card.rank === 14) return { lane: 'T-' + card.suit, pos: 1, alt: 14 }; // 主A:接2 或 接K(A 必为主花色)
+    return { lane: 'T-' + card.suit, pos: card.rank };                 // 主3=3、主2=2、…、主K=13
+  }
+  return { lane: card.suit, pos: card.rank };                          // 边牌 ace-high 4..14
 }
 function shuffle(cards, rng = Math.random) {
   const a = cards.slice();
@@ -333,6 +346,14 @@ function sortHand(hand, trumpSuit) {
 // src/combos.js — 牌型识别、压牌比较、收墩判定
 
 
+// 一组阶梯位是否连成一条拖拉机(排序后相邻差恰为 1,无重复)。
+function isConsecutive(positions) {
+  const s = positions.slice().sort((a, b) => a - b);
+  for (let i = 1; i < s.length; i++)
+    if (s[i] - s[i - 1] !== 1) return false;
+  return true;
+}
+
 // 识别牌型。返回 { type:'single'|'pair'|'tractor', length, group, top, pairs? } 或 null(非法/混合组)
 function detectCombo(cards, trumpSuit) {
   if (!cards || cards.length === 0) return null;
@@ -351,15 +372,24 @@ function detectCombo(cards, trumpSuit) {
   }
   if (![...byKey.values()].every(v => v.count === 2)) return null;
 
-  if (cards.length === 2)
-    return { type: 'pair', length: 2, group, top: strength(cards[0], trumpSuit) };
+  const pairCards = [...byKey.values()].map(v => v.card);
+  const top = Math.max(...pairCards.map(c => strength(c, trumpSuit))); // 比大小用最大那对
 
-  // 拖拉机:各对子 strength 必须连续(相邻差 1)。
-  // 不同花色的副主(如 ♥3♦3)strength 相同 → 差 0 → 判否;王与3 间有空挡 → 王孤岛。
-  const ps = [...byKey.values()].map(v => strength(v.card, trumpSuit)).sort((a, b) => a - b);
-  for (let i = 1; i < ps.length; i++)
-    if (ps[i] - ps[i - 1] !== 1) return null;
-  return { type: 'tractor', length: cards.length, group, pairs: ps.length, top: ps[ps.length - 1] };
+  if (cards.length === 2)
+    return { type: 'pair', length: 2, group, top };
+
+  // 拖拉机:各对子按「相邻刻度」连续,且同 lane(同花色/同孤岛 → 自动排除跨花色、王孤岛)。
+  const ranks = pairCards.map(c => tractorRank(c, trumpSuit));
+  const lane = ranks[0].lane;
+  if (!ranks.every(r => r.lane === lane)) return null;
+  // 主 A 有两个可选阶梯位(接 2 或接 K),同 lane 最多一对 A → 试每种取位能否连成。
+  const fixed = ranks.filter(r => r.alt === undefined).map(r => r.pos);
+  const flex = ranks.find(r => r.alt !== undefined);
+  const linked = flex
+    ? isConsecutive([...fixed, flex.pos]) || isConsecutive([...fixed, flex.alt])
+    : isConsecutive(fixed);
+  if (!linked) return null;
+  return { type: 'tractor', length: cards.length, group, pairs: ranks.length, top };
 }
 
 // b 能否压过 a(a 为当前最大,b 为新出)。两者需同型同长。
@@ -421,21 +451,32 @@ function singletonStrengths(cards, trumpSuit) {
   return out.sort((a, b) => b - a);
 }
 
-// 成对牌的 strength(每对一个值),从小到大
-function pairStrengths(cards, trumpSuit) {
-  const cnt = countByKey(cards), repr = reprByKey(cards), out = [];
-  for (const [k, n] of cnt) if (n >= 2) out.push(strength(repr.get(k), trumpSuit));
-  return out.sort((a, b) => a - b);
+// 一组阶梯位里的最长连续段长度
+function longestRun(positions) {
+  const s = [...new Set(positions)].sort((a, b) => a - b);
+  let best = s.length ? 1 : 0, run = 1;
+  for (let i = 1; i < s.length; i++) {
+    run = (s[i] - s[i - 1] === 1) ? run + 1 : 1;
+    if (run > best) best = run;
+  }
+  return best;
 }
 
-// 最长拖拉机(连续对子)长度
+// 最长拖拉机(连续对子)长度。按「相邻刻度」分 lane(同花色/同孤岛)各算,主 A 两个取位都试。
 function maxTractorLen(cards, trumpSuit) {
-  const ps = pairStrengths(cards, trumpSuit);
-  if (ps.length === 0) return 0;
-  let best = 1, run = 1;
-  for (let i = 1; i < ps.length; i++) {
-    run = (ps[i] - ps[i - 1] === 1) ? run + 1 : 1;
-    if (run > best) best = run;
+  const cnt = countByKey(cards), repr = reprByKey(cards);
+  const byLane = new Map(); // lane -> { fixed:[], altsForA:[pos,alt]|null }
+  for (const [k, n] of cnt) {
+    if (n < 2) continue;
+    const r = tractorRank(repr.get(k), trumpSuit);
+    if (!byLane.has(r.lane)) byLane.set(r.lane, { fixed: [], flexA: null });
+    const L = byLane.get(r.lane);
+    if (r.alt !== undefined) L.flexA = [r.pos, r.alt]; else L.fixed.push(r.pos);
+  }
+  let best = 0;
+  for (const { fixed, flexA } of byLane.values()) {
+    if (!flexA) best = Math.max(best, longestRun(fixed));
+    else best = Math.max(best, longestRun([...fixed, flexA[0]]), longestRun([...fixed, flexA[1]]));
   }
   return best;
 }
@@ -715,14 +756,37 @@ function groupByKey(cardsG) {
 const pairList = cardsG => [...groupByKey(cardsG).values()].filter(a => a.length >= 2).map(a => a.slice(0, 2));
 const singleList = cardsG => [...groupByKey(cardsG).values()].filter(a => a.length === 1).map(a => a[0]);
 
-function findRun(pairs, k, t) {
-  const arr = pairs.map(p => ({ p, s: strength(p[0], t) })).sort((a, b) => a.s - b.s);
-  for (let i = 0; i + k <= arr.length; i++) {
-    let ok = true;
-    for (let j = 1; j < k; j++) if (arr[i + j].s - arr[i + j - 1].s !== 1) { ok = false; break; }
-    if (ok) return arr.slice(i, i + k).map(x => x.p);
+// 在对子列表里找一条长度 k、且最大那对 strength > minTop 的拖拉机(按自然阶梯 tractorRank,同 lane)。
+// 取满足条件里"最小"(top 最低)的一条;找不到返回 null。与 combos/follow 的相邻判定一致。
+function findLadderRun(pairs, k, t, minTop = -Infinity) {
+  const byLane = new Map();
+  for (const p of pairs) {
+    const r = tractorRank(p[0], t);
+    if (!byLane.has(r.lane)) byLane.set(r.lane, []);
+    byLane.get(r.lane).push({ p, pos: r.pos, alt: r.alt, s: strength(p[0], t) });
   }
-  return arr.slice(0, k).map(x => x.p);
+  let found = null;
+  for (const list of byLane.values()) {
+    // 主 A 有两个可选阶梯位(同 lane 最多一对 A)→ 分别试 pos 与 alt
+    const flex = list.find(x => x.alt !== undefined);
+    const fixed = list.filter(x => x.alt === undefined);
+    const variants = flex
+      ? [[...fixed, { ...flex }], [...fixed, { ...flex, pos: flex.alt }]]
+      : [fixed];
+    for (const variant of variants) {
+      const arr = variant.slice().sort((a, b) => a.pos - b.pos);
+      for (let i = 0; i + k <= arr.length; i++) {
+        let ok = true;
+        for (let j = 1; j < k; j++) if (arr[i + j].pos - arr[i + j - 1].pos !== 1) { ok = false; break; }
+        if (!ok) continue;
+        const window = arr.slice(i, i + k);
+        const top = Math.max(...window.map(x => x.s));
+        if (top <= minTop) continue;
+        if (!found || top < found.top) found = { run: window.map(x => x.p), top };
+      }
+    }
+  }
+  return found ? found.run : null;
 }
 
 // 已经亮出的所有牌(用于记牌)
@@ -828,8 +892,8 @@ function buildFollow(hand, lead, t) {
   }
   const k = N / 2, pairs = pairList(handG);
   const required = Math.min(k, pairs.length);
-  const chosen = maxTractorLen(handG, t) >= k ? findRun(pairs, k, t)
-    : pairs.sort((a, b) => strength(a[0], t) - strength(b[0], t)).slice(0, required);
+  const lowPairs = () => pairs.slice().sort((a, b) => strength(a[0], t) - strength(b[0], t)).slice(0, required);
+  const chosen = (maxTractorLen(handG, t) >= k && findLadderRun(pairs, k, t)) || lowPairs();
   let cards = [].concat(...chosen);
   const need = N - cards.length;
   if (need > 0) {
@@ -875,13 +939,8 @@ function findBeatingInGroup(cardsG, lead, minTop, t) {
     return p || null;
   }
   const k = lead.length / 2;
-  const arr = pairList(cardsG).map(p => ({ p, s: strength(p[0], t) })).sort((a, b) => a.s - b.s);
-  for (let i = 0; i + k <= arr.length; i++) {
-    let ok = true;
-    for (let j = 1; j < k; j++) if (arr[i + j].s - arr[i + j - 1].s !== 1) { ok = false; break; }
-    if (ok && arr[i + k - 1].s > minTop) return arr.slice(i, i + k).flatMap(x => x.p);
-  }
-  return null;
+  const run = findLadderRun(pairList(cardsG), k, t, minTop);
+  return run ? run.flat() : null;
 }
 function buildWinningFollow(hand, lead, best, t) {
   const G = lead.group;

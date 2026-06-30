@@ -41,17 +41,25 @@ test('♥2 是主(常主 2)', () => assert.ok(isTrump(C('H', 2), T)));
 test('♥7 不是主(7 普通)', () => assert.ok(!isTrump(C('H', 7), T)));
 test('大王是主', () => assert.ok(isTrump(J(true), T)));
 
-console.log('— 主牌大小:大王>小王>3>2>主A>…>主4(3、2 各一档,不分主副)—');
-test('主牌顺序严格递减', () => {
+console.log('— 主牌大小:大王>小王>主3>副3>主2>副2>主A>…>主4 —');
+test('主牌顺序严格递减(主3>主2>主A>主4)', () => {
   const order = [J(true), J(false), C('S', 3), C('S', 2), C('S', 14), C('S', 7), C('S', 4)];
   const s = order.map(c => strength(c, T));
   for (let i = 1; i < s.length; i++) assert.ok(s[i - 1] > s[i], `第 ${i} 处未递减: ${s.join(',')}`);
 });
-test('所有 3 同级、所有 2 同级,且 3 与 2 相邻', () => {
-  assert.strictEqual(strength(C('S', 3), T), strength(C('H', 3), T));
-  assert.strictEqual(strength(C('S', 2), T), strength(C('H', 2), T));
-  assert.strictEqual(strength(C('S', 3), T), strength(C('S', 2), T) + 1);
+test('主3 > 副3、主2 > 副2(主花色那张更大)', () => {
+  assert.ok(strength(C('S', 3), T) > strength(C('H', 3), T));
+  assert.ok(strength(C('S', 2), T) > strength(C('H', 2), T));
 });
+test('所有 3 > 所有 2(副3 > 主2)', () => {
+  assert.ok(strength(C('H', 3), T) > strength(C('S', 2), T));
+});
+test('单张 主3 > 主K(♥主:♥3 压 ♥K)', () => {
+  const k = detectCombo([C('H', 13)], 'H'), three = detectCombo([C('H', 3)], 'H');
+  assert.ok(beats(three, k));
+});
+test('单张 副3 大小相同(♦3 = ♣3)', () =>
+  assert.strictEqual(strength(C('D', 3), T), strength(C('C', 3), T)));
 test('♥7 边牌强度 = 7', () => assert.strictEqual(strength(C('H', 7), T), 7));
 
 console.log('— 牌型识别 —');
@@ -67,6 +75,11 @@ test('♥3♥3+♦3♦3 不是拖拉机(副主同级)', () => assert.strictEqual
 test('♠3♠3+♥3♥3 不是拖拉机(3 同级,不连)', () => assert.strictEqual(detectCombo([C('S', 3, 0), C('S', 3, 1), C('H', 3, 0), C('H', 3, 1)], T), null));
 test('♠3♠3+♠2♠2 是拖拉机(3 与 2 相邻)', () => assert.strictEqual(detectCombo([C('S', 3, 0), C('S', 3, 1), C('S', 2, 0), C('S', 2, 1)], T).type, 'tractor'));
 test('♥3♥3+♥2♥2 是拖拉机(♥ 主,用户场景)', () => assert.strictEqual(detectCombo([C('H', 3, 0), C('H', 3, 1), C('H', 2, 0), C('H', 2, 1)], 'H').type, 'tractor'));
+test('♥3♥3+♥4♥4 是拖拉机(自然 3-4 相连)', () => assert.strictEqual(detectCombo([C('H', 3, 0), C('H', 3, 1), C('H', 4, 0), C('H', 4, 1)], 'H').type, 'tractor'));
+test('♥A♥A+♥2♥2 是拖拉机(主A 接 2)', () => assert.strictEqual(detectCombo([C('H', 14, 0), C('H', 14, 1), C('H', 2, 0), C('H', 2, 1)], 'H').type, 'tractor'));
+test('♥A♥A+♥K♥K 是拖拉机(主A 也接 K)', () => assert.strictEqual(detectCombo([C('H', 14, 0), C('H', 14, 1), C('H', 13, 0), C('H', 13, 1)], 'H').type, 'tractor'));
+test('♥K♥K+♥A♥A+♥2♥2 不是拖拉机(A 不桥接两头)', () => assert.strictEqual(detectCombo([C('H', 13, 0), C('H', 13, 1), C('H', 14, 0), C('H', 14, 1), C('H', 2, 0), C('H', 2, 1)], 'H'), null));
+test('♥3♥3+♦2♦2 不是拖拉机(跨花色不连)', () => assert.strictEqual(detectCombo([C('H', 3, 0), C('H', 3, 1), C('D', 2, 0), C('D', 2, 1)], 'H'), null));
 
 console.log('— 压牌 / 收墩 —');
 test('主牌对子杀边牌对子', () => {

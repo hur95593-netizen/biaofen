@@ -2,7 +2,7 @@
 // 规则见 飙分-规则.md 第 5 节:
 //   首家出什么,按 拖拉机 → 对子 → 单牌 的优先级尽量凑同结构,且必须出满该组的牌;
 //   跟大:被迫拆单张主牌凑数时,单张必须是最大的;副牌不跟大。
-import { cardGroup, strength } from './cards.js';
+import { cardGroup, strength, tractorRank } from './cards.js';
 
 function countByKey(cards) {
   const m = new Map();
@@ -35,21 +35,32 @@ function singletonStrengths(cards, trumpSuit) {
   return out.sort((a, b) => b - a);
 }
 
-// 成对牌的 strength(每对一个值),从小到大
-function pairStrengths(cards, trumpSuit) {
-  const cnt = countByKey(cards), repr = reprByKey(cards), out = [];
-  for (const [k, n] of cnt) if (n >= 2) out.push(strength(repr.get(k), trumpSuit));
-  return out.sort((a, b) => a - b);
+// 一组阶梯位里的最长连续段长度
+function longestRun(positions) {
+  const s = [...new Set(positions)].sort((a, b) => a - b);
+  let best = s.length ? 1 : 0, run = 1;
+  for (let i = 1; i < s.length; i++) {
+    run = (s[i] - s[i - 1] === 1) ? run + 1 : 1;
+    if (run > best) best = run;
+  }
+  return best;
 }
 
-// 最长拖拉机(连续对子)长度
+// 最长拖拉机(连续对子)长度。按「相邻刻度」分 lane(同花色/同孤岛)各算,主 A 两个取位都试。
 export function maxTractorLen(cards, trumpSuit) {
-  const ps = pairStrengths(cards, trumpSuit);
-  if (ps.length === 0) return 0;
-  let best = 1, run = 1;
-  for (let i = 1; i < ps.length; i++) {
-    run = (ps[i] - ps[i - 1] === 1) ? run + 1 : 1;
-    if (run > best) best = run;
+  const cnt = countByKey(cards), repr = reprByKey(cards);
+  const byLane = new Map(); // lane -> { fixed:[], altsForA:[pos,alt]|null }
+  for (const [k, n] of cnt) {
+    if (n < 2) continue;
+    const r = tractorRank(repr.get(k), trumpSuit);
+    if (!byLane.has(r.lane)) byLane.set(r.lane, { fixed: [], flexA: null });
+    const L = byLane.get(r.lane);
+    if (r.alt !== undefined) L.flexA = [r.pos, r.alt]; else L.fixed.push(r.pos);
+  }
+  let best = 0;
+  for (const { fixed, flexA } of byLane.values()) {
+    if (!flexA) best = Math.max(best, longestRun(fixed));
+    else best = Math.max(best, longestRun([...fixed, flexA[0]]), longestRun([...fixed, flexA[1]]));
   }
   return best;
 }

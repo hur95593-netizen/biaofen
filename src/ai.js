@@ -1,5 +1,5 @@
 // src/ai.js — 电脑玩家(记牌 + 抢分/封锁 + 喂分/躲分)
-import { strength, cardGroup, isTrump } from './cards.js';
+import { strength, cardGroup, isTrump, tractorRank } from './cards.js';
 import { beats, detectCombo } from './combos.js';
 import { maxTractorLen, isLegalFollow } from './follow.js';
 import { pointValue } from './game.js';
@@ -17,14 +17,37 @@ function groupByKey(cardsG) {
 const pairList = cardsG => [...groupByKey(cardsG).values()].filter(a => a.length >= 2).map(a => a.slice(0, 2));
 const singleList = cardsG => [...groupByKey(cardsG).values()].filter(a => a.length === 1).map(a => a[0]);
 
-function findRun(pairs, k, t) {
-  const arr = pairs.map(p => ({ p, s: strength(p[0], t) })).sort((a, b) => a.s - b.s);
-  for (let i = 0; i + k <= arr.length; i++) {
-    let ok = true;
-    for (let j = 1; j < k; j++) if (arr[i + j].s - arr[i + j - 1].s !== 1) { ok = false; break; }
-    if (ok) return arr.slice(i, i + k).map(x => x.p);
+// 在对子列表里找一条长度 k、且最大那对 strength > minTop 的拖拉机(按自然阶梯 tractorRank,同 lane)。
+// 取满足条件里"最小"(top 最低)的一条;找不到返回 null。与 combos/follow 的相邻判定一致。
+function findLadderRun(pairs, k, t, minTop = -Infinity) {
+  const byLane = new Map();
+  for (const p of pairs) {
+    const r = tractorRank(p[0], t);
+    if (!byLane.has(r.lane)) byLane.set(r.lane, []);
+    byLane.get(r.lane).push({ p, pos: r.pos, alt: r.alt, s: strength(p[0], t) });
   }
-  return arr.slice(0, k).map(x => x.p);
+  let found = null;
+  for (const list of byLane.values()) {
+    // 主 A 有两个可选阶梯位(同 lane 最多一对 A)→ 分别试 pos 与 alt
+    const flex = list.find(x => x.alt !== undefined);
+    const fixed = list.filter(x => x.alt === undefined);
+    const variants = flex
+      ? [[...fixed, { ...flex }], [...fixed, { ...flex, pos: flex.alt }]]
+      : [fixed];
+    for (const variant of variants) {
+      const arr = variant.slice().sort((a, b) => a.pos - b.pos);
+      for (let i = 0; i + k <= arr.length; i++) {
+        let ok = true;
+        for (let j = 1; j < k; j++) if (arr[i + j].pos - arr[i + j - 1].pos !== 1) { ok = false; break; }
+        if (!ok) continue;
+        const window = arr.slice(i, i + k);
+        const top = Math.max(...window.map(x => x.s));
+        if (top <= minTop) continue;
+        if (!found || top < found.top) found = { run: window.map(x => x.p), top };
+      }
+    }
+  }
+  return found ? found.run : null;
 }
 
 // 已经亮出的所有牌(用于记牌)
@@ -130,8 +153,8 @@ export function buildFollow(hand, lead, t) {
   }
   const k = N / 2, pairs = pairList(handG);
   const required = Math.min(k, pairs.length);
-  const chosen = maxTractorLen(handG, t) >= k ? findRun(pairs, k, t)
-    : pairs.sort((a, b) => strength(a[0], t) - strength(b[0], t)).slice(0, required);
+  const lowPairs = () => pairs.slice().sort((a, b) => strength(a[0], t) - strength(b[0], t)).slice(0, required);
+  const chosen = (maxTractorLen(handG, t) >= k && findLadderRun(pairs, k, t)) || lowPairs();
   let cards = [].concat(...chosen);
   const need = N - cards.length;
   if (need > 0) {
@@ -177,13 +200,8 @@ function findBeatingInGroup(cardsG, lead, minTop, t) {
     return p || null;
   }
   const k = lead.length / 2;
-  const arr = pairList(cardsG).map(p => ({ p, s: strength(p[0], t) })).sort((a, b) => a.s - b.s);
-  for (let i = 0; i + k <= arr.length; i++) {
-    let ok = true;
-    for (let j = 1; j < k; j++) if (arr[i + j].s - arr[i + j - 1].s !== 1) { ok = false; break; }
-    if (ok && arr[i + k - 1].s > minTop) return arr.slice(i, i + k).flatMap(x => x.p);
-  }
-  return null;
+  const run = findLadderRun(pairList(cardsG), k, t, minTop);
+  return run ? run.flat() : null;
 }
 export function buildWinningFollow(hand, lead, best, t) {
   const G = lead.group;

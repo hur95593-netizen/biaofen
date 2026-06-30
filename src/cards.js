@@ -48,17 +48,30 @@ export function cardGroup(card, trumpSuit) {
   return isTrump(card, trumpSuit) ? 'TRUMP' : card.suit;
 }
 
-// 组内大小(越大越强)。
-// 主牌统一刻度:大王118 > 小王117 > [116空挡] > 3:115 > 2:114 > 主A 113 > 主K 112 …… 主4 103。
-// 所有 3 同一档、所有 2 同一档(不分主副)。3 与 2 相邻 → ♥3♥3+♥2♥2 是拖拉机;
-// 同花色才成对,不同花色的两对 3(同档)不连。116 空挡让“王”只和“王”连(王孤岛):3(115) 与 小王(117) 差 2。
+// 组内「比大小」刻度(越大越强)——决定谁压谁。与「拖拉机相邻」是两套规则(见 tractorRank)。
+// 主牌:大王200 > 小王199 > 主3 198 > 副3 197 > 主2 196 > 副2 195 > 主A 194 > 主K 193 …… 主4 184。
+// 即所有 3 > 所有 2;3 内主3>副3、2 内主2>副2(主花色那张更大)。边牌按点数 4..14。
 export function strength(card, trumpSuit) {
   if (cardGroup(card, trumpSuit) !== 'TRUMP') return card.rank;   // 边牌:4..14
-  if (card.rank === BIG_JOKER) return 118;
-  if (card.rank === SMALL_JOKER) return 117;
-  if (card.rank === 3) return 115;   // 所有 3 同级(常主)
-  if (card.rank === 2) return 114;   // 所有 2 同级(常主)
-  return card.rank + 99;             // 主花色 4..14(A) → 103..113
+  if (card.rank === BIG_JOKER) return 200;
+  if (card.rank === SMALL_JOKER) return 199;
+  const mainSuit = card.suit === trumpSuit;
+  if (card.rank === 3) return mainSuit ? 198 : 197;   // 主3 > 副3
+  if (card.rank === 2) return mainSuit ? 196 : 195;   // 主2 > 副2(且所有3 > 所有2)
+  return card.rank + 180;            // 主花色 4..14(A) → 184..194(均 < 副2 195)
+}
+
+// 「拖拉机相邻」刻度——只管连不连,与比大小分开。返回 { lane, pos, alt? }:
+//   同 lane(同花色/同孤岛)且位置(pos)差 1 才相连。
+//   主花色:ace-low 自然阶梯 A=1,2=2,3=3,…,K=13;主 A「两头都连」→ pos:1 兼 alt:14(接 2 也接 K)。
+//   王:小王/大王 自成孤岛(lane 'JOKER',pos 16/17 相邻)。边牌:ace-high,pos = 点数 4..14。
+export function tractorRank(card, trumpSuit) {
+  if (isJoker(card)) return { lane: 'JOKER', pos: card.rank };          // 16、17 相邻
+  if (isTrump(card, trumpSuit)) {
+    if (card.rank === 14) return { lane: 'T-' + card.suit, pos: 1, alt: 14 }; // 主A:接2 或 接K(A 必为主花色)
+    return { lane: 'T-' + card.suit, pos: card.rank };                 // 主3=3、主2=2、…、主K=13
+  }
+  return { lane: card.suit, pos: card.rank };                          // 边牌 ace-high 4..14
 }
 
 export function shuffle(cards, rng = Math.random) {

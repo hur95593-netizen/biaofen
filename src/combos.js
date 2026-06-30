@@ -1,5 +1,13 @@
 // src/combos.js — 牌型识别、压牌比较、收墩判定
-import { cardGroup, strength } from './cards.js';
+import { cardGroup, strength, tractorRank } from './cards.js';
+
+// 一组阶梯位是否连成一条拖拉机(排序后相邻差恰为 1,无重复)。
+function isConsecutive(positions) {
+  const s = positions.slice().sort((a, b) => a - b);
+  for (let i = 1; i < s.length; i++)
+    if (s[i] - s[i - 1] !== 1) return false;
+  return true;
+}
 
 // 识别牌型。返回 { type:'single'|'pair'|'tractor', length, group, top, pairs? } 或 null(非法/混合组)
 export function detectCombo(cards, trumpSuit) {
@@ -19,15 +27,24 @@ export function detectCombo(cards, trumpSuit) {
   }
   if (![...byKey.values()].every(v => v.count === 2)) return null;
 
-  if (cards.length === 2)
-    return { type: 'pair', length: 2, group, top: strength(cards[0], trumpSuit) };
+  const pairCards = [...byKey.values()].map(v => v.card);
+  const top = Math.max(...pairCards.map(c => strength(c, trumpSuit))); // 比大小用最大那对
 
-  // 拖拉机:各对子 strength 必须连续(相邻差 1)。
-  // 不同花色的副主(如 ♥3♦3)strength 相同 → 差 0 → 判否;王与3 间有空挡 → 王孤岛。
-  const ps = [...byKey.values()].map(v => strength(v.card, trumpSuit)).sort((a, b) => a - b);
-  for (let i = 1; i < ps.length; i++)
-    if (ps[i] - ps[i - 1] !== 1) return null;
-  return { type: 'tractor', length: cards.length, group, pairs: ps.length, top: ps[ps.length - 1] };
+  if (cards.length === 2)
+    return { type: 'pair', length: 2, group, top };
+
+  // 拖拉机:各对子按「相邻刻度」连续,且同 lane(同花色/同孤岛 → 自动排除跨花色、王孤岛)。
+  const ranks = pairCards.map(c => tractorRank(c, trumpSuit));
+  const lane = ranks[0].lane;
+  if (!ranks.every(r => r.lane === lane)) return null;
+  // 主 A 有两个可选阶梯位(接 2 或接 K),同 lane 最多一对 A → 试每种取位能否连成。
+  const fixed = ranks.filter(r => r.alt === undefined).map(r => r.pos);
+  const flex = ranks.find(r => r.alt !== undefined);
+  const linked = flex
+    ? isConsecutive([...fixed, flex.pos]) || isConsecutive([...fixed, flex.alt])
+    : isConsecutive(fixed);
+  if (!linked) return null;
+  return { type: 'tractor', length: cards.length, group, pairs: ranks.length, top };
 }
 
 // b 能否压过 a(a 为当前最大,b 为新出)。两者需同型同长。
