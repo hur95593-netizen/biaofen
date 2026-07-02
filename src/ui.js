@@ -273,7 +273,8 @@ function showStart() {
     <div class="row">
       <button class="btn big" id="p3">3 人</button>
       <button class="btn big" id="p4">4 人</button>
-    </div>`);
+    </div>
+    <p class="sub" style="margin-top:14px">和朋友联机?<a href="online.html" style="color:var(--gold)">联机版入口</a>(需启动联机服务器)</p>`);
   $('p3').onclick = () => startGame(3);
   $('p4').onclick = () => startGame(4);
 }
