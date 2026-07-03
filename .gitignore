@@ -1,4 +1,13 @@
 .DS_Store
 .claude/
 node_modules/
-biaofen
+/biaofen
+
+# iOS / Xcode 构建产物
+ios/build/
+ios/build-device/
+ios/BiaofenCore/.build/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+DerivedData/
