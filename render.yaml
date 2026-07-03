@@ -1,0 +1,9 @@
+# Render 一键部署配置(Blueprint):
+# render.com → New → Blueprint → 选本仓库 → Apply,完成后得到 https://xxx.onrender.com/online.html
+services:
+  - type: web
+    name: biaofen
+    runtime: docker
+    plan: free            # 免费档:闲置 15 分钟休眠,下次访问 ~1 分钟唤醒;对局进行中不会休眠
+    region: singapore     # 离国内最近的区域;也可改 oregon / frankfurt
+    healthCheckPath: /online.html

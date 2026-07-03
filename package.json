@@ -6,8 +6,9 @@
   "description": "飙分 — 纸牌游戏(单机 vs 电脑AI + Go 联机服务器)",
   "scripts": {
     "test": "node test/engine.test.js && node test/follow.test.js",
-    "test:go": "go -C server test ./...",
-    "online": "go -C server run .",
-    "single": "node server.js"
+    "test:go": "go test ./...",
+    "online": "go run ./server -root .",
+    "single": "node server.js",
+    "build": "go build -ldflags='-s -w' -o biaofen ./server"
   }
 }

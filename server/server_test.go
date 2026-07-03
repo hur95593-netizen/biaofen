@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -191,7 +192,7 @@ func (c *tClient) gameFromView(v *View) *game.Game {
 func TestFullGameTwoHumansPlusBots(t *testing.T) {
 	hub := NewHub()
 	hub.botScale = 0 // AI 秒出,加速测试
-	srv := httptest.NewServer(newMux(hub, "."))
+	srv := httptest.NewServer(newMux(hub, http.Dir(".")))
 	defer srv.Close()
 
 	// c1 建房(4 人),c2 加入,剩两个座位由电脑补
@@ -251,7 +252,7 @@ func TestFullGameTwoHumansPlusBots(t *testing.T) {
 func TestReconnectKeepsSeat(t *testing.T) {
 	hub := NewHub()
 	hub.botScale = 0 // AI 秒出,加速测试
-	srv := httptest.NewServer(newMux(hub, "."))
+	srv := httptest.NewServer(newMux(hub, http.Dir(".")))
 	defer srv.Close()
 
 	c1 := dialWS(t, srv)
@@ -304,7 +305,7 @@ func TestReconnectKeepsSeat(t *testing.T) {
 }
 
 func TestJoinErrors(t *testing.T) {
-	srv := httptest.NewServer(newMux(NewHub(), "."))
+	srv := httptest.NewServer(newMux(NewHub(), http.Dir(".")))
 	defer srv.Close()
 
 	// 不存在的房间
