@@ -15,17 +15,25 @@ targets:
       - Biaofen
     dependencies:
       - package: BiaofenCore
+    info:
+      path: Biaofen/Info.plist
+      properties:
+        CFBundleDisplayName: 飙分
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
+        UIStatusBarHidden: true
+        # 联机:允许 ws://(本地/局域网服务器无 TLS);云端建议用 wss://
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: 用于连接同一局域网内的飙分对战服务器
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.biaofen.app
         DEVELOPMENT_TEAM: BNNV62NJKQ
         CODE_SIGN_STYLE: Automatic
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: 飙分
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_UIStatusBarHidden: YES
-        INFOPLIST_KEY_UIRequiresFullScreen: YES
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.0"
         CURRENT_PROJECT_VERSION: 1

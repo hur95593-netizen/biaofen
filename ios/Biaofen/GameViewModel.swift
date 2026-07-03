@@ -5,8 +5,14 @@ import BiaofenCore
 
 @MainActor
 @Observable
-final class GameViewModel {
+final class GameViewModel: TableVM {
     let humanSeat = 0
+    let supportsHint = true
+    let roomBadge: String? = nil
+    let toast: String? = nil
+
+    func seatIsBot(_ seat: Int) -> Bool { seat != humanSeat }
+    func seatConnected(_ seat: Int) -> Bool { true }
 
     private var engine: Game?
     private var aiTask: Task<Void, Never>?

@@ -10,19 +10,19 @@ func removeCards(_ hand: [Card], _ cards: [Card]) -> [Card] {
     return hand.filter { !ids.contains($0.id) }
 }
 
-public struct Play: Sendable {
+public struct Play: Sendable, Codable {
     public let seat: Int
     public let cards: [Card]
     public let combo: Combo?
 }
 
-public struct Trick: Sendable {
+public struct Trick: Sendable, Codable {
     public let plays: [Play]
     public let winnerSeat: Int
     public let points: Int
 }
 
-public struct HandResult: Sendable {
+public struct HandResult: Sendable, Codable {
     public let declarer: Int
     public let contract: Int
     public let line: Int

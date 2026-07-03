@@ -7,8 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		19AE0DC52E8EC3E5F46BB9E1 /* TableVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144B034B152E10753AD40398 /* TableVM.swift */; };
+		1AC1320EE335DC23643B939F /* ServerMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2064A82FE9BDB97ED400324 /* ServerMessages.swift */; };
 		2C816C249EE31A86B4F6EB5D /* BiaofenApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D24407AFE96034955AF719 /* BiaofenApp.swift */; };
 		3CC9A7A9DF5B4E4037F41F07 /* CardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740F0F70D24DD223E51E84C8 /* CardViews.swift */; };
+		45E573997A54022E25C17BEF /* SocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ED9DC66A0DB68162FFFB762 /* SocketClient.swift */; };
+		67605F95819E8E175E8E2DD2 /* OnlineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B139A083FE02691A10E6205 /* OnlineViews.swift */; };
+		7BFD24AD895F6CC076A2D839 /* OnlineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDBFC9B36B8D33A06268B51 /* OnlineViewModel.swift */; };
 		884EE9DEBC28B011EF97A636 /* TableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9ADFB0DEFCBF3BF72487877 /* TableView.swift */; };
 		B530735A8EC925A3DBA984BA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 409B4FB7D8E76D8979223583 /* ContentView.swift */; };
 		EA9325A5583DD4CA2CEBCE48 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B04B02D7EA2E413731315D /* GameViewModel.swift */; };
@@ -17,11 +22,17 @@
 
 /* Begin PBXFileReference section */
 		01B04B02D7EA2E413731315D /* GameViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameViewModel.swift; sourceTree = "<group>"; };
+		144B034B152E10753AD40398 /* TableVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableVM.swift; sourceTree = "<group>"; };
+		3B139A083FE02691A10E6205 /* OnlineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineViews.swift; sourceTree = "<group>"; };
 		3FC4442BF9DE42EA2681F5B6 /* Biaofen.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Biaofen.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		409B4FB7D8E76D8979223583 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		49D24407AFE96034955AF719 /* BiaofenApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiaofenApp.swift; sourceTree = "<group>"; };
+		4ED9DC66A0DB68162FFFB762 /* SocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketClient.swift; sourceTree = "<group>"; };
+		6FDBFC9B36B8D33A06268B51 /* OnlineViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineViewModel.swift; sourceTree = "<group>"; };
 		740F0F70D24DD223E51E84C8 /* CardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardViews.swift; sourceTree = "<group>"; };
 		7F37F80EDF1F841F9C2751C3 /* BiaofenCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BiaofenCore; path = BiaofenCore; sourceTree = SOURCE_ROOT; };
+		8F20EC45EEF3B96D391A1CC0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		D2064A82FE9BDB97ED400324 /* ServerMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerMessages.swift; sourceTree = "<group>"; };
 		E9ADFB0DEFCBF3BF72487877 /* TableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -42,6 +53,9 @@
 			children = (
 				49D24407AFE96034955AF719 /* BiaofenApp.swift */,
 				01B04B02D7EA2E413731315D /* GameViewModel.swift */,
+				8F20EC45EEF3B96D391A1CC0 /* Info.plist */,
+				144B034B152E10753AD40398 /* TableVM.swift */,
+				C3F7053A2150DA529F6E51F1 /* Online */,
 				9F7316A2A92856126ED9192F /* Views */,
 			);
 			path = Biaofen;
@@ -80,6 +94,17 @@
 				E9ADFB0DEFCBF3BF72487877 /* TableView.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		C3F7053A2150DA529F6E51F1 /* Online */ = {
+			isa = PBXGroup;
+			children = (
+				6FDBFC9B36B8D33A06268B51 /* OnlineViewModel.swift */,
+				3B139A083FE02691A10E6205 /* OnlineViews.swift */,
+				D2064A82FE9BDB97ED400324 /* ServerMessages.swift */,
+				4ED9DC66A0DB68162FFFB762 /* SocketClient.swift */,
+			);
+			path = Online;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -150,6 +175,11 @@
 				3CC9A7A9DF5B4E4037F41F07 /* CardViews.swift in Sources */,
 				B530735A8EC925A3DBA984BA /* ContentView.swift in Sources */,
 				EA9325A5583DD4CA2CEBCE48 /* GameViewModel.swift in Sources */,
+				7BFD24AD895F6CC076A2D839 /* OnlineViewModel.swift in Sources */,
+				67605F95819E8E175E8E2DD2 /* OnlineViews.swift in Sources */,
+				1AC1320EE335DC23643B939F /* ServerMessages.swift in Sources */,
+				45E573997A54022E25C17BEF /* SocketClient.swift in Sources */,
+				19AE0DC52E8EC3E5F46BB9E1 /* TableVM.swift in Sources */,
 				884EE9DEBC28B011EF97A636 /* TableView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -165,12 +195,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BNNV62NJKQ;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "飙分";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiresFullScreen = YES;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = Biaofen/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -310,12 +335,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BNNV62NJKQ;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "飙分";
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UIRequiresFullScreen = YES;
-				INFOPLIST_KEY_UIStatusBarHidden = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = Biaofen/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

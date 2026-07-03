@@ -4,7 +4,7 @@ import Foundation
 /// (花色,点数) 键 —— 同键的两张即一对
 func cardKey(_ c: Card) -> String { "\(c.suit)-\(c.rank)" }
 
-public enum ComboType: String, Sendable {
+public enum ComboType: String, Sendable, Codable {
     case single, pair, tractor
 }
 
@@ -15,6 +15,24 @@ public struct Combo: Sendable, Equatable {
     public let group: String
     public let top: Int
     public let pairs: Int
+}
+
+// JSON 与 Go 版 combos.go 对齐(pairs 带 omitempty → 缺省 0)
+extension Combo: Codable {
+    enum CodingKeys: String, CodingKey {
+        case type, length, group, top, pairs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            type: try c.decode(ComboType.self, forKey: .type),
+            length: try c.decode(Int.self, forKey: .length),
+            group: try c.decode(String.self, forKey: .group),
+            top: try c.decode(Int.self, forKey: .top),
+            pairs: try c.decodeIfPresent(Int.self, forKey: .pairs) ?? 0
+        )
+    }
 }
 
 /// 一组阶梯位是否连成一条拖拉机(排序后相邻差恰为 1,无重复)

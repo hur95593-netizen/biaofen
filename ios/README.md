@@ -1,6 +1,13 @@
 # 飙分 iOS 原生版(SwiftUI)
 
-单机 vs AI,锁横屏,iOS 17+。规则引擎 1:1 移植自 `server/game/`(Go 版),二者行为一致。
+单机 vs AI + 联机对战,锁横屏,iOS 17+。规则引擎 1:1 移植自 `server/game/`(Go 版),二者行为一致。
+
+## 联机
+
+- 连现有 Go 服务器(`go run ./server -root .`,或线上部署),主菜单 →「联机对战」。
+- 服务器地址填 `域名` 或 `IP:端口`(自动补 ws(s):// 和 /ws 路径;本地/局域网走 ws,其余默认 wss)。
+- 联机时牌局逻辑全在服务器:客户端渲染按座位打码的视图、本地只做出牌合法性预校验(复用 BiaofenCore)。
+- 断线自动带 token 重连回原座位(服务器侧掉线期间 AI 托管)。
 
 ## 目录结构
 
@@ -10,7 +17,9 @@ ios/
 ├── Biaofen.xcodeproj      # 生成产物,不手改
 ├── Biaofen/               # App 壳(SwiftUI)
 │   ├── BiaofenApp.swift
-│   ├── GameViewModel.swift    # 界面状态 + AI 节奏驱动
+│   ├── TableVM.swift          # 牌桌协议:单机/联机共用同一套 UI
+│   ├── GameViewModel.swift    # 单机:本地引擎 + AI 节奏驱动
+│   ├── Online/                # 联机:WebSocket 客户端、服务器消息 DTO、联机 VM、大厅界面
 │   └── Views/                 # 菜单、牌桌、卡牌绘制
 └── BiaofenCore/           # 规则引擎(独立 Swift Package,可在 macOS 直接跑测试)
     ├── Sources/BiaofenCore/
@@ -40,14 +49,16 @@ xcodebuild -project Biaofen.xcodeproj -scheme Biaofen \
 
 ## 调试启动参数
 
-- `--auto4` / `--auto3`:启动直接开 4/3 人局
+- `--auto4` / `--auto3`:启动直接开 4/3 人局(单机)
 - `--autopilot`:人类座位也由 AI 代打(演示/截图用)
+- `--online-demo [--server 127.0.0.1:8124]`:联机自测(自动建房、开局、出牌)
 
 ```bash
 xcrun simctl launch booted com.biaofen.app --auto4 --autopilot
+xcrun simctl launch booted com.biaofen.app --online-demo
 ```
 
-## 后续(二期)
+## 备注
 
-- 联机:复用现有 Go 服务器(WebSocket),`Card` 的 JSON 字段已与前后端一致
-- 真机安装 / 上架需在 Xcode 里配置开发者账号签名
+- 免费开发者账号签名 7 天过期,重新构建安装即可
+- 真机联机:手机与服务器同一局域网填 `Mac的IP:8124`,或填线上部署域名

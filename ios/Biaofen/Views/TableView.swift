@@ -1,9 +1,10 @@
 // TableView.swift — 横屏牌桌:顶栏 + 对手 + 中央出牌区 + 手牌扇 + 操作栏 + 结算面板
+// 泛型于 TableVM:单机(GameViewModel)与联机(OnlineViewModel)共用
 import SwiftUI
 import BiaofenCore
 
-struct TableView: View {
-    let vm: GameViewModel
+struct TableView<VM: TableVM>: View {
+    let vm: VM
 
     var body: some View {
         ZStack {
@@ -23,10 +24,23 @@ struct TableView: View {
             TrickLayer(vm: vm)
                 .offset(y: -8)
 
+            if let toast = vm.toast {
+                Text(toast)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(.black.opacity(0.55)))
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 44)
+                    .transition(.opacity)
+            }
+
             if let r = vm.result {
                 ResultOverlay(vm: vm, r: r)
             }
         }
+        .animation(.easeOut(duration: 0.2), value: vm.toast != nil)
     }
 
     @ViewBuilder
@@ -59,11 +73,20 @@ struct TableView: View {
 
 // MARK: - 顶栏
 
-struct TopBar: View {
-    let vm: GameViewModel
+struct TopBar<VM: TableVM>: View {
+    let vm: VM
 
     var body: some View {
         HStack(spacing: 14) {
+            if let badge = vm.roomBadge {
+                Text(badge)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.yellow)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(.black.opacity(0.35)))
+            }
+
             Text("第 \(vm.handNo) 局")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
@@ -102,6 +125,7 @@ struct TopBar: View {
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(Capsule().fill(.black.opacity(0.25)))
+                    .lineLimit(1)
             }
 
             Button {
@@ -123,14 +147,16 @@ struct TopBar: View {
 
 // MARK: - 对手
 
-struct OpponentView: View {
-    let vm: GameViewModel
+struct OpponentView<VM: TableVM>: View {
+    let vm: VM
     let seat: Int
 
     private var isTurn: Bool {
         (vm.phase == .play && vm.turn == seat && vm.displayTrick == nil)
             || (vm.phase == .bidding && vm.bidTurn == seat)
     }
+
+    private var connected: Bool { vm.seatConnected(seat) }
 
     var body: some View {
         VStack(spacing: 3) {
@@ -143,20 +169,29 @@ struct OpponentView: View {
                         )
                     )
                     .frame(width: 46, height: 46)
-                Image(systemName: "cpu.fill")
+                Image(systemName: vm.seatIsBot(seat) ? "cpu.fill" : "person.fill")
                     .font(.system(size: 20))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.white.opacity(connected ? 0.85 : 0.35))
+                if !connected {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.red)
+                        .offset(x: 16, y: -16)
+                }
                 if isTurn {
                     Circle()
                         .stroke(Color.yellow, lineWidth: 3)
                         .frame(width: 50, height: 50)
                 }
             }
+            .opacity(connected ? 1 : 0.75)
 
             HStack(spacing: 4) {
                 Text(vm.playerName(seat))
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .frame(maxWidth: 90)
                 if vm.declarer == seat && vm.phase != .bidding {
                     Text("庄")
                         .font(.system(size: 10, weight: .black))
@@ -196,8 +231,8 @@ struct OpponentView: View {
 
 // MARK: - 中央出牌区
 
-struct TrickLayer: View {
-    let vm: GameViewModel
+struct TrickLayer<VM: TableVM>: View {
+    let vm: VM
 
     var body: some View {
         let plays: [Play] = vm.displayTrick?.plays ?? vm.trickPlays
@@ -217,7 +252,7 @@ struct TrickLayer: View {
             switch rel {
             case 0: return CGSize(width: 0, height: 70)
             case 1: return CGSize(width: 165, height: -2)
-            case 2: return CGSize(width: 0, height: -68)
+            case 2: return CGSize(width: 0, height: -44) // 避开顶部玩家的名牌
             default: return CGSize(width: -165, height: -2)
             }
         }
@@ -253,8 +288,8 @@ struct PlayRow: View {
 
 // MARK: - 我的手牌
 
-struct MyHandView: View {
-    let vm: GameViewModel
+struct MyHandView<VM: TableVM>: View {
+    let vm: VM
 
     var body: some View {
         GeometryReader { geo in
@@ -292,8 +327,8 @@ struct MyHandView: View {
 
 // MARK: - 操作栏
 
-struct ActionBar: View {
-    let vm: GameViewModel
+struct ActionBar<VM: TableVM>: View {
+    let vm: VM
 
     var body: some View {
         HStack(spacing: 10) {
@@ -335,8 +370,10 @@ struct ActionBar: View {
                 }
             case .play:
                 if vm.turn == vm.humanSeat && vm.displayTrick == nil {
-                    BarButton(title: "提示", secondary: true) {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) { vm.hint() }
+                    if vm.supportsHint {
+                        BarButton(title: "提示", secondary: true) {
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) { vm.hint() }
+                        }
                     }
                     BarButton(title: "出牌", disabled: !vm.canPlaySelection) { vm.humanPlay() }
                 }
@@ -382,8 +419,8 @@ struct BarButton: View {
 
 // MARK: - 结算面板
 
-struct ResultOverlay: View {
-    let vm: GameViewModel
+struct ResultOverlay<VM: TableVM>: View {
+    let vm: VM
     let r: HandResult
 
     var body: some View {
@@ -416,6 +453,7 @@ struct ResultOverlay: View {
                             HStack(spacing: 5) {
                                 Text(vm.playerName(seat))
                                     .font(.system(size: 14, weight: .semibold))
+                                    .lineLimit(1)
                                 if seat == r.declarer {
                                     Text("庄")
                                         .font(.system(size: 10, weight: .black))
@@ -425,11 +463,11 @@ struct ResultOverlay: View {
                                 }
                             }
                             Spacer()
-                            let d = r.deltas[seat]
+                            let d = r.deltas.indices.contains(seat) ? r.deltas[seat] : 0
                             Text(d > 0 ? "+\(d)" : "\(d)")
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(d > 0 ? .green : (d < 0 ? .red : .secondary))
-                            Text("累计 \(r.scores[seat])")
+                            Text("累计 \(r.scores.indices.contains(seat) ? r.scores[seat] : 0)")
                                 .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 84, alignment: .trailing)
@@ -446,6 +484,7 @@ struct ResultOverlay: View {
             }
             .padding(20)
             .frame(width: 380)
+            .foregroundStyle(.white)
             .background(
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color(red: 0.12, green: 0.16, blue: 0.14))
