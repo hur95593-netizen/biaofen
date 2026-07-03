@@ -161,36 +161,87 @@ func seenCards(g *Game) []Card {
 	return out
 }
 
-// 同(边)花色里比 card 更大、且还没出现(未亮出、不在我手)的张数 —— 0 即为该花色当前最大(boss)
-func unseenHigher(card Card, seen, hand []Card, t string) int {
-	if CardGroup(card, t) == "TRUMP" {
-		return 99
+// 一个组(边花色或主)的全部候选牌(每种 2 张)
+func groupCandidates(group, t string) []Card {
+	if group != "TRUMP" {
+		out := make([]Card, 0, 11)
+		for r := 4; r <= 14; r++ {
+			out = append(out, Card{Suit: group, Rank: r})
+		}
+		return out
 	}
-	suit, s := card.Suit, Strength(card, t)
+	out := []Card{{Suit: "JOKER", Rank: BigJoker}, {Suit: "JOKER", Rank: SmallJoker}}
+	for _, s := range Suits {
+		out = append(out, Card{Suit: s, Rank: 3}, Card{Suit: s, Rank: 2})
+	}
+	for r := 4; r <= 14; r++ {
+		out = append(out, Card{Suit: t, Rank: r})
+	}
+	return out
+}
+
+// cand 还没露面(不在已出牌、不在我手)的张数
+func remainingCopies(cand Card, seen, hand []Card) int {
+	copies := 2
+	for _, x := range seen {
+		if x.Suit == cand.Suit && x.Rank == cand.Rank {
+			copies--
+		}
+	}
+	for _, x := range hand {
+		if x.Suit == cand.Suit && x.Rank == cand.Rank {
+			copies--
+		}
+	}
+	if copies < 0 {
+		copies = 0
+	}
+	return copies
+}
+
+// 组内(边花色与主牌通用)比 card 更大、还没露面的张数 —— 0 即当前最大(boss)
+func unseenHigher(card Card, seen, hand []Card, t string) int {
+	s := Strength(card, t)
 	cnt := 0
-	for rank := 4; rank <= 14; rank++ {
-		if rank == 2 || rank == 3 {
+	for _, cand := range groupCandidates(CardGroup(card, t), t) {
+		if Strength(cand, t) <= s {
 			continue
 		}
-		if Strength(Card{Suit: suit, Rank: rank}, t) <= s {
+		cnt += remainingCopies(cand, seen, hand)
+	}
+	return cnt
+}
+
+// 组内比 card 更大、且对手还可能凑成一对的档位数 —— 0 即我的对子无对可压(不含主杀)
+func unseenHigherPair(card Card, seen, hand []Card, t string) int {
+	s := Strength(card, t)
+	cnt := 0
+	for _, cand := range groupCandidates(CardGroup(card, t), t) {
+		if Strength(cand, t) <= s {
 			continue
 		}
-		copies := 2
-		for _, c := range seen {
-			if c.Suit == suit && c.Rank == rank {
-				copies--
-			}
-		}
-		for _, c := range hand {
-			if c.Suit == suit && c.Rank == rank {
-				copies--
-			}
-		}
-		if copies > 0 {
-			cnt += copies
+		if remainingCopies(cand, seen, hand) == 2 {
+			cnt++
 		}
 	}
 	return cnt
+}
+
+// 对手手里(约)还剩多少主。底牌里的主看不见 → 宁可高估,多拉一轮
+func othersTrumps(g *Game, seat int) int {
+	t := g.TrumpSuit
+	total := 42 // 4王 + 8张3 + 8张2 + 主花色4..A共22张
+	for _, c := range seenCards(g) {
+		if IsTrump(c, t) {
+			total--
+		}
+	}
+	for _, c := range g.Hands[seat] {
+		if IsTrump(c, t) {
+			total--
+		}
+	}
+	return total
 }
 
 // ---- 喊分(逐级 +10,直到超出自己的目标)----
@@ -261,8 +312,15 @@ func discardScore(c Card, t string) int {
 	if IsTrump(c, t) {
 		s += 1000
 	}
-	if PointValue(c) > 0 {
-		s += 500
+	switch c.Rank {
+	case 13:
+		s += 800 // K:分牌 + 大牌,尽量留着打
+	case 14:
+		s += 500 // A:boss,别扣
+	case 10:
+		s -= 10 // 10/5:打不赢就藏进底牌护分(闲家抢不到)
+	case 5:
+		s -= 40
 	}
 	if CardGroup(c, t) != "TRUMP" {
 		s += c.Rank
@@ -289,14 +347,14 @@ func AiBury(g *Game, seat int) []Card {
 	sort.SliceStable(suits, func(i, j int) bool { return len(bySuit[suits[i]]) < len(bySuit[suits[j]]) })
 	for _, s := range suits {
 		grp := bySuit[s]
-		hasPoint := false
+		hasBig := false
 		for _, c := range grp {
-			if PointValue(c) > 0 {
-				hasPoint = true
+			if c.Rank >= 13 { // A/K 留着打;5/10 随短门扣掉反而是藏分
+				hasBig = true
 				break
 			}
 		}
-		if len(grp) <= need-len(discards) && !hasPoint {
+		if len(grp) <= need-len(discards) && !hasBig {
 			discards = append(discards, grp...)
 		}
 	}
@@ -326,26 +384,166 @@ func AiBury(g *Game, seat int) []Card {
 	return discards
 }
 
-// AiLead 首攻
+// AiLead 首攻:拖拉机 > 庄家控主 > boss 对子 > boss 单张 > 小牌过渡
 func AiLead(g *Game, seat int) []Card {
 	t, hand := g.TrumpSuit, g.Hands[seat]
-	isZhuang := seat == g.Declarer
-	side, trumps := sideOf(hand, t), trumpOf(hand, t)
-	if isZhuang && len(trumps) >= 5 {
-		return []Card{descS(trumps, t)[0]} // 庄家拉主
-	}
 	seen := seenCards(g)
-	var bosses []Card
-	for _, c := range side {
-		if unseenHigher(c, seen, hand, t) == 0 {
-			bosses = append(bosses, c)
+	if run := leadTractor(hand, t, seen); run != nil {
+		return run // 拖拉机几乎无解,还能一手甩掉多张
+	}
+	if seat == g.Declarer {
+		if draw := leadDrawTrump(g, seat, seen); draw != nil {
+			return draw
 		}
 	}
-	if len(bosses) > 0 {
-		return []Card{descS(bosses, t)[0]} // 兑现 boss:稳赢一墩
+	if p := leadBossPair(hand, t, seen); p != nil {
+		return p
 	}
+	if c := leadBossSingle(hand, t, seen); c != nil {
+		return c
+	}
+	return smallLead(hand, t)
+}
+
+// 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
+func leadTractor(hand []Card, t string, seen []Card) []Card {
+	pairs := pairList(hand)
+	if len(pairs) < 2 {
+		return nil
+	}
+	for k := len(pairs); k >= 3; k-- {
+		if run := findLadderRun(pairs, k, t, math.MinInt); run != nil {
+			return flattenPairs(run)
+		}
+	}
+	minTop := math.MinInt
+	for {
+		run := findLadderRun(pairs, 2, t, minTop)
+		if run == nil {
+			return nil
+		}
+		top := runTopCard(run, t)
+		if unseenHigherPair(top, seen, hand, t) == 0 {
+			return flattenPairs(run)
+		}
+		minTop = Strength(top, t) // 这条顶张不硬,往更高的找
+	}
+}
+
+func flattenPairs(run [][]Card) []Card {
+	var out []Card
+	for _, p := range run {
+		out = append(out, p...)
+	}
+	return out
+}
+
+func runTopCard(run [][]Card, t string) Card {
+	top := run[0][0]
+	for _, p := range run {
+		if Strength(p[0], t) > Strength(top, t) {
+			top = p[0]
+		}
+	}
+	return top
+}
+
+// 庄家控主:对手还有不少主时,有 boss 就边赢边拉;主够长没 boss 就用小主换大主
+func leadDrawTrump(g *Game, seat int, seen []Card) []Card {
+	t := g.TrumpSuit
+	hand := g.Hands[seat]
+	trumps := trumpOf(hand, t)
+	if len(trumps) == 0 || othersTrumps(g, seat) < 3 {
+		return nil // 对手主差不多光了,别再浪费
+	}
+	top := descS(trumps, t)[0]
+	if unseenHigher(top, seen, hand, t) == 0 {
+		return []Card{top}
+	}
+	if len(trumps) >= 6 {
+		for _, c := range ascS(trumps, t) {
+			if PointValue(c) == 0 {
+				return []Card{c}
+			}
+		}
+	}
+	return nil
+}
+
+// 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20)
+func leadBossPair(hand []Card, t string, seen []Card) []Card {
+	var best []Card
+	bestScore := math.MinInt
+	for _, p := range pairList(hand) {
+		c := p[0]
+		if unseenHigherPair(c, seen, hand, t) > 0 {
+			continue
+		}
+		score := PointValue(c)*20 + Strength(c, t)
+		if score > bestScore {
+			best, bestScore = p, score
+		}
+	}
+	return best
+}
+
+// 边花色里"当前最大"的落单牌 → 兑现,优先带分的;不拆对子
+func leadBossSingle(hand []Card, t string, seen []Card) []Card {
+	var best Card
+	bestScore := math.MinInt
+	for _, e := range orderedByKey(hand) {
+		if e.count != 1 {
+			continue
+		}
+		c := e.card
+		if CardGroup(c, t) == "TRUMP" {
+			continue // 主 boss 由庄家控主逻辑处理;闲家拉主反帮庄
+		}
+		if unseenHigher(c, seen, hand, t) > 0 {
+			continue
+		}
+		score := PointValue(c)*20 + Strength(c, t)
+		if score > bestScore {
+			best, bestScore = c, score
+		}
+	}
+	if bestScore == math.MinInt {
+		return nil
+	}
+	return []Card{best}
+}
+
+// 过渡:最小的不带分边单张 → 最小不带分边牌 → 最小边牌 → 最小不带分牌 → 最小牌
+func smallLead(hand []Card, t string) []Card {
+	side := sideOf(hand, t)
 	if len(side) > 0 {
-		return []Card{ascS(side, t)[0]} // 无 boss → 出小牌,别白送大牌
+		var pool []Card
+		for _, c := range singleList(side) {
+			if PointValue(c) == 0 {
+				pool = append(pool, c)
+			}
+		}
+		if len(pool) > 0 {
+			return []Card{ascS(pool, t)[0]}
+		}
+		for _, c := range side {
+			if PointValue(c) == 0 {
+				pool = append(pool, c)
+			}
+		}
+		if len(pool) > 0 {
+			return []Card{ascS(pool, t)[0]}
+		}
+		return []Card{ascS(side, t)[0]}
+	}
+	var pool []Card
+	for _, c := range hand {
+		if PointValue(c) == 0 {
+			pool = append(pool, c)
+		}
+	}
+	if len(pool) > 0 {
+		return []Card{ascS(pool, t)[0]}
 	}
 	return []Card{ascS(hand, t)[0]}
 }
@@ -564,6 +762,14 @@ func AiFollow(g *Game, seat int) []Card {
 			wantWin = !winnerIsZhuang && (points > 0 || isLast) // 庄家:封锁闲家的分墩
 		} else {
 			wantWin = winnerIsZhuang && (points > 0 || isLast) // 闲家:只抢庄家的墩,不抢队友
+		}
+		// 白捡节奏:对头正赢着,而我能用"反正当前最大"的同组单张吃 → 无分也抢(赢下一手首攻权)
+		if !wantWin && lead.Type == "single" && len(win) == 1 {
+			enemyWinning := winnerIsZhuang != isZhuang
+			if enemyWinning && CardGroup(win[0], t) == lead.Group &&
+				unseenHigher(win[0], seenCards(g), hand, t) == 0 {
+				wantWin = true
+			}
 		}
 	}
 	if wantWin && IsLegalFollow(hand, lead, win, t) {

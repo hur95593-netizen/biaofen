@@ -118,20 +118,57 @@ func seenCards(_ g: Game) -> [Card] {
     return out
 }
 
-/// 同(边)花色里比 card 更大、且还没出现(未亮出、不在我手)的张数 —— 0 即为该花色当前最大(boss)
+/// 一个组(边花色或主)的全部候选牌(每种 2 张)
+func groupCandidates(_ group: String, _ t: String) -> [Card] {
+    if group != "TRUMP" {
+        return (4...14).map { Card(suit: group, rank: $0) }
+    }
+    var out = [Card(suit: "JOKER", rank: BIG_JOKER), Card(suit: "JOKER", rank: SMALL_JOKER)]
+    for s in SUITS {
+        out.append(Card(suit: s, rank: 3))
+        out.append(Card(suit: s, rank: 2))
+    }
+    for r in 4...14 {
+        out.append(Card(suit: t, rank: r))
+    }
+    return out
+}
+
+/// cand 还没露面(不在已出牌、不在我手)的张数
+func remainingCopies(_ cand: Card, _ seen: [Card], _ hand: [Card]) -> Int {
+    var copies = 2
+    for x in seen where x.suit == cand.suit && x.rank == cand.rank { copies -= 1 }
+    for x in hand where x.suit == cand.suit && x.rank == cand.rank { copies -= 1 }
+    return max(copies, 0)
+}
+
+/// 组内(边花色与主牌通用)比 card 更大、还没露面的张数 —— 0 即当前最大(boss)
 func unseenHigher(_ card: Card, _ seen: [Card], _ hand: [Card], _ t: String) -> Int {
-    if cardGroup(card, t) == "TRUMP" { return 99 }
-    let suit = card.suit
     let s = strength(card, t)
     var cnt = 0
-    for rank in 4...14 {
-        if strength(Card(suit: suit, rank: rank), t) <= s { continue }
-        var copies = 2
-        for c in seen where c.suit == suit && c.rank == rank { copies -= 1 }
-        for c in hand where c.suit == suit && c.rank == rank { copies -= 1 }
-        if copies > 0 { cnt += copies }
+    for cand in groupCandidates(cardGroup(card, t), t) where strength(cand, t) > s {
+        cnt += remainingCopies(cand, seen, hand)
     }
     return cnt
+}
+
+/// 组内比 card 更大、且对手还可能凑成一对的档位数 —— 0 即我的对子无对可压(不含主杀)
+func unseenHigherPair(_ card: Card, _ seen: [Card], _ hand: [Card], _ t: String) -> Int {
+    let s = strength(card, t)
+    var cnt = 0
+    for cand in groupCandidates(cardGroup(card, t), t) where strength(cand, t) > s {
+        if remainingCopies(cand, seen, hand) == 2 { cnt += 1 }
+    }
+    return cnt
+}
+
+/// 对手手里(约)还剩多少主。底牌里的主看不见 → 宁可高估,多拉一轮
+func othersTrumps(_ g: Game, _ seat: Int) -> Int {
+    let t = g.trumpSuit
+    var total = 42 // 4王 + 8张3 + 8张2 + 主花色4..A共22张
+    for c in seenCards(g) where isTrump(c, t) { total -= 1 }
+    for c in g.hands[seat] where isTrump(c, t) { total -= 1 }
+    return total
 }
 
 // MARK: - 喊分(逐级 +10,直到超出自己的目标)
@@ -181,7 +218,13 @@ public func aiTrump(_ g: Game, _ seat: Int) -> String {
 func discardScore(_ c: Card, _ t: String) -> Int {
     var s = 0
     if isTrump(c, t) { s += 1000 }
-    if pointValue(c) > 0 { s += 500 }
+    switch c.rank {
+    case 13: s += 800 // K:分牌 + 大牌,尽量留着打
+    case 14: s += 500 // A:boss,别扣
+    case 10: s -= 10  // 10/5:打不赢就藏进底牌护分(闲家抢不到)
+    case 5: s -= 40
+    default: break
+    }
     if cardGroup(c, t) != "TRUMP" { s += c.rank }
     return s
 }
@@ -200,8 +243,8 @@ public func aiBury(_ g: Game, _ seat: Int) -> [Card] {
         .stableSorted { (bySuit[$0] ?? []).count < (bySuit[$1] ?? []).count }
     for s in suits {
         let grp = bySuit[s] ?? []
-        let hasPoint = grp.contains { pointValue($0) > 0 }
-        if grp.count <= need - discards.count && !hasPoint {
+        let hasBig = grp.contains { $0.rank >= 13 } // A/K 留着打;5/10 随短门扣掉反而是藏分
+        if grp.count <= need - discards.count && !hasBig {
             discards.append(contentsOf: grp)
         }
     }
@@ -221,23 +264,130 @@ public func aiBury(_ g: Game, _ seat: Int) -> [Card] {
     return discards
 }
 
-/// 首攻
+/// 首攻:拖拉机 > 庄家控主 > boss 对子 > boss 单张 > 小牌过渡
 public func aiLead(_ g: Game, _ seat: Int) -> [Card] {
     let t = g.trumpSuit
     let hand = g.hands[seat]
-    let isZhuang = seat == g.declarer
-    let side = sideOf(hand, t)
-    let trumps = trumpOf(hand, t)
-    if isZhuang && trumps.count >= 5 {
-        return [descS(trumps, t)[0]] // 庄家拉主
-    }
     let seen = seenCards(g)
-    let bosses = side.filter { unseenHigher($0, seen, hand, t) == 0 }
-    if !bosses.isEmpty {
-        return [descS(bosses, t)[0]] // 兑现 boss:稳赢一墩
+    if let run = leadTractor(hand, t, seen) {
+        return run // 拖拉机几乎无解,还能一手甩掉多张
     }
+    if seat == g.declarer, let draw = leadDrawTrump(g, seat, seen) {
+        return draw
+    }
+    if let p = leadBossPair(hand, t, seen) {
+        return p
+    }
+    if let c = leadBossSingle(hand, t, seen) {
+        return c
+    }
+    return smallLead(hand, t)
+}
+
+/// 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
+func leadTractor(_ hand: [Card], _ t: String, _ seen: [Card]) -> [Card]? {
+    let pairs = pairList(hand)
+    guard pairs.count >= 2 else { return nil }
+    var k = pairs.count
+    while k >= 3 {
+        if let run = findLadderRun(pairs, k, t, Int.min) {
+            return flattenPairs(run)
+        }
+        k -= 1
+    }
+    var minTop = Int.min
+    while true {
+        guard let run = findLadderRun(pairs, 2, t, minTop) else { return nil }
+        let top = runTopCard(run, t)
+        if unseenHigherPair(top, seen, hand, t) == 0 {
+            return flattenPairs(run)
+        }
+        minTop = strength(top, t) // 这条顶张不硬,往更高的找
+    }
+}
+
+func flattenPairs(_ run: [[Card]]) -> [Card] {
+    run.flatMap { $0 }
+}
+
+func runTopCard(_ run: [[Card]], _ t: String) -> Card {
+    var top = run[0][0]
+    for p in run where strength(p[0], t) > strength(top, t) {
+        top = p[0]
+    }
+    return top
+}
+
+/// 庄家控主:对手还有不少主时,有 boss 就边赢边拉;主够长没 boss 就用小主换大主
+func leadDrawTrump(_ g: Game, _ seat: Int, _ seen: [Card]) -> [Card]? {
+    let t = g.trumpSuit
+    let hand = g.hands[seat]
+    let trumps = trumpOf(hand, t)
+    guard !trumps.isEmpty, othersTrumps(g, seat) >= 3 else {
+        return nil // 对手主差不多光了,别再浪费
+    }
+    let top = descS(trumps, t)[0]
+    if unseenHigher(top, seen, hand, t) == 0 {
+        return [top]
+    }
+    if trumps.count >= 6 {
+        for c in ascS(trumps, t) where pointValue(c) == 0 {
+            return [c]
+        }
+    }
+    return nil
+}
+
+/// 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20)
+func leadBossPair(_ hand: [Card], _ t: String, _ seen: [Card]) -> [Card]? {
+    var best: [Card]?
+    var bestScore = Int.min
+    for p in pairList(hand) {
+        let c = p[0]
+        guard unseenHigherPair(c, seen, hand, t) == 0 else { continue }
+        let score = pointValue(c) * 20 + strength(c, t)
+        if score > bestScore {
+            best = p
+            bestScore = score
+        }
+    }
+    return best
+}
+
+/// 边花色里"当前最大"的落单牌 → 兑现,优先带分的;不拆对子
+func leadBossSingle(_ hand: [Card], _ t: String, _ seen: [Card]) -> [Card]? {
+    var best: Card?
+    var bestScore = Int.min
+    for e in orderedByKey(hand) where e.count == 1 {
+        let c = e.card
+        if cardGroup(c, t) == "TRUMP" { continue } // 主 boss 由庄家控主逻辑处理;闲家拉主反帮庄
+        guard unseenHigher(c, seen, hand, t) == 0 else { continue }
+        let score = pointValue(c) * 20 + strength(c, t)
+        if score > bestScore {
+            best = c
+            bestScore = score
+        }
+    }
+    return best.map { [$0] }
+}
+
+/// 过渡:最小的不带分边单张 → 最小不带分边牌 → 最小边牌 → 最小不带分牌 → 最小牌
+func smallLead(_ hand: [Card], _ t: String) -> [Card] {
+    let side = sideOf(hand, t)
     if !side.isEmpty {
-        return [ascS(side, t)[0]] // 无 boss → 出小牌,别白送大牌
+        let singlePool = singleList(side).filter { pointValue($0) == 0 }
+        if !singlePool.isEmpty {
+            return [ascS(singlePool, t)[0]]
+        }
+        let sidePool = side.filter { pointValue($0) == 0 }
+        if !sidePool.isEmpty {
+            return [ascS(sidePool, t)[0]]
+        }
+        return [ascS(side, t)[0]]
+    }
+    let pool = hand.filter { pointValue($0) == 0 }
+    if !pool.isEmpty {
+        return [ascS(pool, t)[0]]
     }
     return [ascS(hand, t)[0]]
 }
@@ -411,11 +561,19 @@ public func aiFollow(_ g: Game, _ seat: Int) -> [Card] {
     if let best {
         win = buildWinningFollow(hand, lead, best, t)
     }
-    if win != nil {
+    if let w = win {
         if isZhuang {
             wantWin = !winnerIsZhuang && (points > 0 || isLast) // 庄家:封锁闲家的分墩
         } else {
             wantWin = winnerIsZhuang && (points > 0 || isLast) // 闲家:只抢庄家的墩,不抢队友
+        }
+        // 白捡节奏:对头正赢着,而我能用"反正当前最大"的同组单张吃 → 无分也抢(赢下一手首攻权)
+        if !wantWin, lead.type == .single, w.count == 1 {
+            let enemyWinning = winnerIsZhuang != isZhuang
+            if enemyWinning, cardGroup(w[0], t) == lead.group,
+               unseenHigher(w[0], seenCards(g), hand, t) == 0 {
+                wantWin = true
+            }
         }
     }
     if wantWin, let win, isLegalFollow(hand: hand, lead: lead, play: win, trumpSuit: t) {
