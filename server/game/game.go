@@ -241,23 +241,63 @@ func (g *Game) ValidatePlay(seat int, cards []Card) bool {
 		return false
 	}
 	if g.IsLeadTurn() {
-		return DetectCombo(cards, g.TrumpSuit) != nil // 首攻:单/对/拖拉机
+		// 首攻:单/对/拖拉机,或"必大"主牌甩牌
+		return DetectCombo(cards, g.TrumpSuit) != nil || g.ValidThrow(seat, cards)
 	}
 	return IsLegalFollow(g.Hands[seat], g.LeadCombo, cards, g.TrumpSuit)
+}
+
+// ValidThrow 甩牌合法性:多张主牌,且未见的主里没有任何一张能大过甩出的最小者(必赢)。
+// 底牌里的主也按"未见"算 → 偏保守,但绝不会甩输。
+func (g *Game) ValidThrow(seat int, cards []Card) bool {
+	if len(cards) < 2 {
+		return false
+	}
+	minS := 1 << 30
+	for _, c := range cards {
+		if !IsTrump(c, g.TrumpSuit) {
+			return false // 只允许甩主牌(副牌不准甩)
+		}
+		if s := Strength(c, g.TrumpSuit); s < minS {
+			minS = s
+		}
+	}
+	seen := seenCards(g)
+	for _, cand := range groupCandidates("TRUMP", g.TrumpSuit) {
+		if Strength(cand, g.TrumpSuit) > minS && remainingCopies(cand, seen, g.Hands[seat]) > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// 甩牌的 Combo(不经 DetectCombo,只在首攻构造;同强度的跟牌压不过它 → 必归首家)
+func throwCombo(cards []Card, trumpSuit string) *Combo {
+	top := 0
+	for _, c := range cards {
+		if s := Strength(c, trumpSuit); s > top {
+			top = s
+		}
+	}
+	return &Combo{Type: "throw", Length: len(cards), Group: "TRUMP", Top: top}
 }
 
 func (g *Game) PlayCards(seat int, cards []Card) error {
 	if !g.ValidatePlay(seat, cards) {
 		return errors.New("出牌不合法")
 	}
+	combo := DetectCombo(cards, g.TrumpSuit)
 	if g.IsLeadTurn() {
-		g.LeadCombo = DetectCombo(cards, g.TrumpSuit)
+		if combo == nil {
+			combo = throwCombo(cards, g.TrumpSuit) // 甩牌
+		}
+		g.LeadCombo = combo
 	}
 	g.Hands[seat] = removeCards(g.Hands[seat], cards)
 	g.TrickPlays = append(g.TrickPlays, Play{
 		Seat:  seat,
 		Cards: append([]Card(nil), cards...),
-		Combo: DetectCombo(cards, g.TrumpSuit),
+		Combo: combo,
 	})
 	if len(g.TrickPlays) == g.Players {
 		g.resolveTrick()
@@ -306,8 +346,8 @@ func (g *Game) resolveTrick() {
 			kp += PointValue(c)
 		}
 		mult := 2
-		if win.Combo.Type == "single" {
-			mult = 1
+		if win.Combo.Type == "single" || win.Combo.Type == "throw" {
+			mult = 1 // 甩牌本质是单牌集合,不翻倍
 		}
 		g.LastTrickBonus = kp * mult
 		g.XianPoints += g.LastTrickBonus

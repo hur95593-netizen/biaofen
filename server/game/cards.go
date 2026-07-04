@@ -147,25 +147,44 @@ func Deal(cards []Card, players int) DealResult {
 	return DealResult{Hands: hands, Kitty: append([]Card(nil), cards[i:]...), KittySize: kittySize, PerHand: perHand}
 }
 
-// SideSuitOrder 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
-func SideSuitOrder(trumpSuit string) []string {
-	switch trumpSuit {
-	case "S":
-		return []string{"H", "C", "D"} // 红黑红
-	case "C":
-		return []string{"H", "S", "D"} // 红黑红
-	case "H":
-		return []string{"S", "D", "C"} // 黑红黑
-	case "D":
-		return []string{"S", "H", "C"} // 黑红黑
+// SideSuitOrder 边花色展示顺序:按手牌里实际存在的边花色动态交错(黑红穿插,不易看错)。
+// 多的那种颜色排外侧、少的穿插;整门被扣掉/打光后自动重排。
+func SideSuitOrder(present map[string]bool) []string {
+	var blacks, reds []string
+	for _, s := range []string{"S", "C"} {
+		if present[s] {
+			blacks = append(blacks, s)
+		}
 	}
-	return []string{"S", "H", "C", "D"} // 未亮主:黑红黑红
+	for _, s := range []string{"H", "D"} {
+		if present[s] {
+			reds = append(reds, s)
+		}
+	}
+	longer, shorter := blacks, reds
+	if len(reds) > len(blacks) {
+		longer, shorter = reds, blacks
+	}
+	var out []string
+	for i := 0; i < len(longer); i++ {
+		out = append(out, longer[i])
+		if i < len(shorter) {
+			out = append(out, shorter[i])
+		}
+	}
+	return out
 }
 
 // 整理手牌(展示用):主牌在前,组内从大到小;相同的牌相邻(对子不被拆)
 func SortHand(hand []Card, trumpSuit string) []Card {
+	present := map[string]bool{}
+	for _, c := range hand {
+		if CardGroup(c, trumpSuit) != "TRUMP" {
+			present[c.Suit] = true
+		}
+	}
 	groupOrder := map[string]int{"TRUMP": 0}
-	for i, s := range SideSuitOrder(trumpSuit) {
+	for i, s := range SideSuitOrder(present) {
 		groupOrder[s] = i + 1
 	}
 	suitOrder := map[string]int{"S": 0, "H": 1, "D": 2, "C": 3, "JOKER": 4}

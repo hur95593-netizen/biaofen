@@ -6,6 +6,7 @@ func cardKey(_ c: Card) -> String { "\(c.suit)-\(c.rank)" }
 
 public enum ComboType: String, Sendable, Codable {
     case single, pair, tractor
+    case throwLead = "throw" // 甩牌:必大的主牌单牌集合(只在首攻构造)
 }
 
 /// Combo 识别结果

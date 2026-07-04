@@ -96,13 +96,18 @@ function onState(v) {
   const wasPhase = S ? S.phase : '';
   S = v;
   window.__S = v; // 调试钩子:控制台可查看当前视图
-  // 收墩定格:tricksPlayed 增加且新一墩还没人出牌 → 先亮上一墩 1.4s
+  // 收墩定格:整墩留在桌上(带赢家标记),下一圈有人出牌的状态到达时才清掉
   if (v.tricksPlayed > prevTricksPlayed && v.lastTrick && (!v.trickPlays || !v.trickPlays.length)) {
     frozenTrick = v.lastTrick;
-    clearTimeout(freezeTimer);
-    freezeTimer = setTimeout(() => { frozenTrick = null; render(); }, TRICK_PAUSE);
     const isXian = v.lastTrick.winnerSeat !== v.declarer;
     flash(`${seatName(v.lastTrick.winnerSeat)} 收墩` + (isXian && v.lastTrick.points ? `,闲家 +${v.lastTrick.points} 分` : ''));
+  } else if (v.trickPlays && v.trickPlays.length) {
+    frozenTrick = null;
+  }
+  if (v.phase === 'done' && frozenTrick) {
+    // 最后一墩:亮一拍后放行结算面板
+    clearTimeout(freezeTimer);
+    freezeTimer = setTimeout(() => { frozenTrick = null; render(); }, TRICK_PAUSE);
   }
   prevTricksPlayed = v.tricksPlayed || 0;
   // 进入扣底阶段:庄家默认选中底牌,方便看清哪些是底牌
@@ -330,7 +335,7 @@ function renderActions() {
   if (S.phase === 'bidding' && S.bidTurn === S.mySeat) return renderBidActions(bar);
   if (S.phase === 'declare' && S.declarer === S.mySeat) return renderDeclareActions(bar);
   if (S.phase === 'kitty' && S.declarer === S.mySeat) return renderKittyActions(bar);
-  if (S.phase === 'play' && S.turn === S.mySeat && !frozenTrick) return renderPlayActions(bar);
+  if (S.phase === 'play' && S.turn === S.mySeat) return renderPlayActions(bar);
   const ts = turnSeat();
   const waiting = S.phase === 'done' ? '' : (ts >= 0 ? `等待 ${seatName(ts)} …` : '');
   bar.innerHTML = `<div class="hint">${waiting}</div>`;

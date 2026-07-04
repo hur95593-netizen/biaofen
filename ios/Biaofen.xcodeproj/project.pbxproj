@@ -10,11 +10,13 @@
 		19AE0DC52E8EC3E5F46BB9E1 /* TableVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144B034B152E10753AD40398 /* TableVM.swift */; };
 		1AC1320EE335DC23643B939F /* ServerMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2064A82FE9BDB97ED400324 /* ServerMessages.swift */; };
 		2C816C249EE31A86B4F6EB5D /* BiaofenApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49D24407AFE96034955AF719 /* BiaofenApp.swift */; };
+		2DDB0E244554182E293FE8A1 /* deal.wav in Resources */ = {isa = PBXBuildFile; fileRef = B466AF8054E5E0C59EB9CC32 /* deal.wav */; };
 		3CC9A7A9DF5B4E4037F41F07 /* CardViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740F0F70D24DD223E51E84C8 /* CardViews.swift */; };
 		45E573997A54022E25C17BEF /* SocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ED9DC66A0DB68162FFFB762 /* SocketClient.swift */; };
 		46A9DED3B1F1D3D8975A82C9 /* win.wav in Resources */ = {isa = PBXBuildFile; fileRef = 14C293E4BD97324E59DFE743 /* win.wav */; };
 		5BDF0B2F4BE0047E3B1B4EC3 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 671A6615BEA46CB89E10EF6E /* SoundPlayer.swift */; };
 		67605F95819E8E175E8E2DD2 /* OnlineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B139A083FE02691A10E6205 /* OnlineViews.swift */; };
+		6CC00C947B72678CFB87AA43 /* bgm.wav in Resources */ = {isa = PBXBuildFile; fileRef = 615ACE3C4D4BD2B49CDF4543 /* bgm.wav */; };
 		7BFD24AD895F6CC076A2D839 /* OnlineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDBFC9B36B8D33A06268B51 /* OnlineViewModel.swift */; };
 		884EE9DEBC28B011EF97A636 /* TableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9ADFB0DEFCBF3BF72487877 /* TableView.swift */; };
 		A30E0C165C359AC5283523B0 /* bid.wav in Resources */ = {isa = PBXBuildFile; fileRef = 01F84E699E0A6629FC614AE4 /* bid.wav */; };
@@ -25,6 +27,7 @@
 		DC2735E9BB497C2DC9D16A1F /* lose.wav in Resources */ = {isa = PBXBuildFile; fileRef = 1AB828EE8699572A985FDB08 /* lose.wav */; };
 		EA9325A5583DD4CA2CEBCE48 /* GameViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B04B02D7EA2E413731315D /* GameViewModel.swift */; };
 		EB00C1AF1EA04E70264B10E9 /* trump.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0CC77759089911FA0F9E94A0 /* trump.wav */; };
+		F22412978285BE77E4568EE2 /* yourturn.wav in Resources */ = {isa = PBXBuildFile; fileRef = B2EB1193F853B5425AF4D46A /* yourturn.wav */; };
 		F334864EA623599D2FFB67E7 /* BiaofenCore in Frameworks */ = {isa = PBXBuildFile; productRef = DC7C6BAA78480EB74C99F1CD /* BiaofenCore */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +44,7 @@
 		409B4FB7D8E76D8979223583 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		49D24407AFE96034955AF719 /* BiaofenApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiaofenApp.swift; sourceTree = "<group>"; };
 		4ED9DC66A0DB68162FFFB762 /* SocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketClient.swift; sourceTree = "<group>"; };
+		615ACE3C4D4BD2B49CDF4543 /* bgm.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = bgm.wav; sourceTree = "<group>"; };
 		671A6615BEA46CB89E10EF6E /* SoundPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundPlayer.swift; sourceTree = "<group>"; };
 		6FDBFC9B36B8D33A06268B51 /* OnlineViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineViewModel.swift; sourceTree = "<group>"; };
 		740F0F70D24DD223E51E84C8 /* CardViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardViews.swift; sourceTree = "<group>"; };
@@ -48,6 +52,8 @@
 		8F20EC45EEF3B96D391A1CC0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9DF16D0679AA771F6153D6FD /* select.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = select.wav; sourceTree = "<group>"; };
 		A643C1F43867FDFDAF2F9CAF /* trick.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = trick.wav; sourceTree = "<group>"; };
+		B2EB1193F853B5425AF4D46A /* yourturn.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = yourturn.wav; sourceTree = "<group>"; };
+		B466AF8054E5E0C59EB9CC32 /* deal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = deal.wav; sourceTree = "<group>"; };
 		D2064A82FE9BDB97ED400324 /* ServerMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerMessages.swift; sourceTree = "<group>"; };
 		E9ADFB0DEFCBF3BF72487877 /* TableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -107,13 +113,16 @@
 		8F4AFC948A3AED87486D6FA4 /* Sounds */ = {
 			isa = PBXGroup;
 			children = (
+				615ACE3C4D4BD2B49CDF4543 /* bgm.wav */,
 				01F84E699E0A6629FC614AE4 /* bid.wav */,
+				B466AF8054E5E0C59EB9CC32 /* deal.wav */,
 				1AB828EE8699572A985FDB08 /* lose.wav */,
 				0331742B80D51B04B7E73CD9 /* play.wav */,
 				9DF16D0679AA771F6153D6FD /* select.wav */,
 				A643C1F43867FDFDAF2F9CAF /* trick.wav */,
 				0CC77759089911FA0F9E94A0 /* trump.wav */,
 				14C293E4BD97324E59DFE743 /* win.wav */,
+				B2EB1193F853B5425AF4D46A /* yourturn.wav */,
 			);
 			path = Sounds;
 			sourceTree = "<group>";
@@ -204,13 +213,16 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6CC00C947B72678CFB87AA43 /* bgm.wav in Resources */,
 				A30E0C165C359AC5283523B0 /* bid.wav in Resources */,
+				2DDB0E244554182E293FE8A1 /* deal.wav in Resources */,
 				DC2735E9BB497C2DC9D16A1F /* lose.wav in Resources */,
 				B6716CE2FD500C1A2DFA5D3E /* play.wav in Resources */,
 				D91E0B8FF31FDE59D30E4832 /* select.wav in Resources */,
 				D3ACC7FE5024AFFCCB686802 /* trick.wav in Resources */,
 				EB00C1AF1EA04E70264B10E9 /* trump.wav in Resources */,
 				46A9DED3B1F1D3D8975A82C9 /* win.wav in Resources */,
+				F22412978285BE77E4568EE2 /* yourturn.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

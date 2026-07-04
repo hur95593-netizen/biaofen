@@ -113,6 +113,7 @@ export function isLegalFollow(hand, lead, play, trumpSuit) {
 
   // m > N:组内有取舍,按结构跟牌
   if (lead.type === 'single') return true;             // 任意一张
+  if (lead.type === 'throw') return true;              // 甩牌 = 单牌集合:出满该组任意 N 张即可
 
   if (lead.type === 'pair') {
     if (pairCount(handG) >= 1) return isPair(playG);    // 有对必须跟对(任意对)

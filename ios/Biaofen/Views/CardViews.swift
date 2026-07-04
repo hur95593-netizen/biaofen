@@ -14,6 +14,19 @@ struct CardFace: View {
         return SuitStyle.isRed(card.suit) ? .red : Color(red: 0.15, green: 0.15, blue: 0.2)
     }
 
+    /// 大王暖红、小王冷蓝 —— 线上棋牌 App 的通行配色,一眼区分
+    private var jokerGradient: LinearGradient {
+        card.rank == BIG_JOKER
+            ? LinearGradient(
+                colors: [Color(red: 0.98, green: 0.35, blue: 0.22), Color(red: 0.80, green: 0.10, blue: 0.10)],
+                startPoint: .top, endPoint: .bottom
+            )
+            : LinearGradient(
+                colors: [Color(red: 0.35, green: 0.55, blue: 0.95), Color(red: 0.15, green: 0.30, blue: 0.70)],
+                startPoint: .top, endPoint: .bottom
+            )
+    }
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: width * 0.14)
@@ -23,25 +36,30 @@ struct CardFace: View {
                 .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
 
             if card.isJoker {
-                // 角标锚定左上:牌堆重叠时露出的左边缘也能一眼认出大小王
-                VStack(spacing: -width * 0.02) {
-                    Text(card.rank == BIG_JOKER ? "大" : "小")
-                        .font(.system(size: width * 0.30, weight: .heavy))
-                    Text("王")
-                        .font(.system(size: width * 0.30, weight: .heavy))
-                    Text("★")
-                        .font(.system(size: width * 0.22))
+                // 左侧竖排字条(重叠只露左边也能认)+ 中央皇冠;大王红 / 小王蓝
+                HStack(spacing: 0) {
+                    VStack(spacing: width * 0.015) {
+                        ForEach(Array((card.rank == BIG_JOKER ? "大王" : "小王").enumerated()), id: \.offset) { _, ch in
+                            Text(String(ch))
+                                .font(.system(size: width * 0.26, weight: .black))
+                        }
+                        Text("★")
+                            .font(.system(size: width * 0.18, weight: .black))
+                    }
+                    .foregroundStyle(jokerGradient)
+                    .padding(.leading, width * 0.08)
+                    .padding(.top, width * 0.08)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    Spacer(minLength: 0)
                 }
-                .foregroundStyle(color)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(.leading, width * 0.08)
-                .padding(.top, width * 0.06)
 
-                Text("🃏")
-                    .font(.system(size: width * 0.40))
+                Image(systemName: "crown.fill")
+                    .font(.system(size: width * 0.42))
+                    .foregroundStyle(jokerGradient)
+                    .shadow(color: .black.opacity(0.2), radius: 1, y: 1)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(.trailing, width * 0.08)
-                    .padding(.bottom, width * 0.08)
+                    .padding(.trailing, width * 0.10)
+                    .padding(.bottom, width * 0.12)
             } else {
                 VStack(alignment: .leading, spacing: -width * 0.04) {
                     Text(SuitStyle.rankText(card.rank))

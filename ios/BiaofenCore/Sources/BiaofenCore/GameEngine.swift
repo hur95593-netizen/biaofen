@@ -198,19 +198,51 @@ public final class Game {
         guard phase == .play, seat == turn, !cards.isEmpty else { return false }
         guard isSubMultiset(cards, hands[seat]) else { return false }
         if isLeadTurn {
-            return detectCombo(cards, trumpSuit) != nil // 首攻:单/对/拖拉机
+            // 首攻:单/对/拖拉机,或"必大"主牌甩牌
+            return detectCombo(cards, trumpSuit) != nil || validThrow(seat: seat, cards: cards)
         }
         guard let lead = leadCombo else { return false }
         return isLegalFollow(hand: hands[seat], lead: lead, play: cards, trumpSuit: trumpSuit)
     }
 
+    /// 甩牌合法性:多张主牌,且未见的主里没有任何一张能大过甩出的最小者(必赢)。
+    /// 底牌里的主也按"未见"算 → 偏保守,但绝不会甩输。
+    public func validThrow(seat: Int, cards: [Card]) -> Bool {
+        guard cards.count >= 2 else { return false }
+        var minS = Int.max
+        for c in cards {
+            guard isTrump(c, trumpSuit) else { return false } // 只允许甩主牌(副牌不准甩)
+            minS = min(minS, strength(c, trumpSuit))
+        }
+        let seen = seenCards(self)
+        for cand in groupCandidates("TRUMP", trumpSuit) {
+            if strength(cand, trumpSuit) > minS, remainingCopies(cand, seen, hands[seat]) > 0 {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// 甩牌的 Combo(不经 detectCombo,只在首攻构造;同强度的跟牌压不过它 → 必归首家)
+    private func makeThrowCombo(_ cards: [Card]) -> Combo {
+        var top = 0
+        for c in cards {
+            top = max(top, strength(c, trumpSuit))
+        }
+        return Combo(type: .throwLead, length: cards.count, group: "TRUMP", top: top, pairs: 0)
+    }
+
     public func playCards(seat: Int, cards: [Card]) throws {
         guard validatePlay(seat: seat, cards: cards) else { throw GameError.illegalPlay }
+        var combo = detectCombo(cards, trumpSuit)
         if isLeadTurn {
-            leadCombo = detectCombo(cards, trumpSuit)
+            if combo == nil {
+                combo = makeThrowCombo(cards) // 甩牌
+            }
+            leadCombo = combo
         }
         hands[seat] = removeCards(hands[seat], cards)
-        trickPlays.append(Play(seat: seat, cards: cards, combo: detectCombo(cards, trumpSuit)))
+        trickPlays.append(Play(seat: seat, cards: cards, combo: combo))
         if trickPlays.count == players {
             settleTrick()
         } else {
@@ -244,7 +276,7 @@ public final class Game {
             for c in buried {
                 kp += pointValue(c)
             }
-            let mult = combo.type == .single ? 1 : 2
+            let mult = (combo.type == .single || combo.type == .throwLead) ? 1 : 2 // 甩牌本质是单牌集合,不翻倍
             lastTrickBonus = kp * mult
             xianPoints += lastTrickBonus
             for c in buried where pointValue(c) > 0 {

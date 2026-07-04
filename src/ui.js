@@ -209,7 +209,8 @@ function renderPlayActions(bar) {
     valid = g.validatePlay(HUMAN, cards);
     if (isLead) {
       const c = detectCombo(cards, g.trumpSuit);
-      info = c ? comboName(c) : '首攻必须是 单张/对子/拖拉机';
+      if (c) info = comboName(c);
+      else info = valid ? `甩牌（${cards.length} 张必大主牌）` : '首攻:单张/对子/拖拉机,或必大主牌甩牌';
     } else {
       info = valid ? `跟牌 ${cards.length} 张` : '不符合跟牌规则';
     }
@@ -226,6 +227,7 @@ function renderPlayActions(bar) {
 function comboName(c) {
   if (c.type === 'single') return '单张';
   if (c.type === 'pair') return '对子';
+  if (c.type === 'throw') return `甩牌（${c.length} 张）`;
   return `拖拉机（${c.pairs} 连对）`;
 }
 function mkBtn(text, on, extra = '') {
@@ -267,18 +269,19 @@ function doPlay(seat, cards) {
   const prev = g.tricks.length;
   try { g.playCards(seat, cards); }
   catch (e) { flash('出牌不合法'); return; }
+  frozenTrick = null; // 新一圈开始出牌 → 收走上一圈的展示
   selected.clear();
   flash('');
   SFX.play();
   if (g.tricks.length > prev) {
     const tr = g.tricks[g.tricks.length - 1];
-    frozenTrick = tr;
+    frozenTrick = tr; // 整墩留在桌上,直到下一圈有人出牌
     const isXian = tr.winnerSeat !== g.declarer;
     SFX.trick();
     flash(`${seatName(tr.winnerSeat)} 收墩` + (isXian && tr.points ? `,闲家 +${tr.points} 分` : ''));
     render();
     clearTimeout(aiTimer);
-    aiTimer = setTimeout(() => { frozenTrick = null; tick(); }, TRICK_PAUSE);
+    aiTimer = setTimeout(() => tick(), TRICK_PAUSE);
   } else {
     tick();
   }

@@ -181,6 +181,10 @@ func IsLegalFollow(hand []Card, lead *Combo, play []Card, trumpSuit string) bool
 		return true // 任意一张
 	}
 
+	if lead.Type == "throw" {
+		return true // 甩牌 = 单牌集合:出满该组任意 N 张即可
+	}
+
 	if lead.Type == "pair" {
 		if PairCount(handG) >= 1 {
 			return isPairCards(playG) // 有对必须跟对(任意对)

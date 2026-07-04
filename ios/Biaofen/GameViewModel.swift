@@ -38,6 +38,7 @@ final class GameViewModel: TableVM {
     var scores: [Int] = []
     var trickPlays: [Play] = []
     var result: HandResult?
+    var kittyIDs: Set<String> = []
 
     // ---- 纯界面状态 ----
     var selected: Set<String> = []
@@ -69,6 +70,7 @@ final class GameViewModel: TableVM {
         selected = []
         displayTrick = nil
         e.startHand()
+        SoundPlayer.shared.play("deal")
         refresh()
         driveAI()
     }
@@ -93,7 +95,16 @@ final class GameViewModel: TableVM {
         scores = e.scores
         trickPlays = e.trickPlays
         result = e.result
+        kittyIDs = (e.phase == .kitty && e.declarer == humanSeat) ? Set(e.kitty.map(\.id)) : []
+        // 轮到你出牌:提示音(开局发牌等非交互刷新不响)
+        let mine = e.phase == .play && e.turn == humanSeat
+        if mine && !wasMyTurn && !e.tricks.isEmpty {
+            SoundPlayer.shared.play("yourturn")
+        }
+        wasMyTurn = mine
     }
+
+    private var wasMyTurn = false
 
     // MARK: - AI 驱动(带出牌节奏)
 
@@ -136,6 +147,7 @@ final class GameViewModel: TableVM {
                 let seat = e.turn
                 let cards = e.isLeadTurn ? aiLead(e, seat) : aiFollow(e, seat)
                 let before = e.tricks.count
+                displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
                 try? e.playCards(seat: seat, cards: cards)
                 SoundPlayer.shared.play("play")
                 refresh()
@@ -146,7 +158,7 @@ final class GameViewModel: TableVM {
         }
     }
 
-    /// 一墩刚打完 → 把整墩摆出来停一拍再收走
+    /// 一墩刚打完 → 整墩留在桌上(带赢家标记),下一圈有人出牌时才清掉;这里只停一拍控制节奏
     private func pauseIfTrickDone(_ tricksBefore: Int) async {
         guard let e = engine, e.tricks.count > tricksBefore, let last = e.tricks.last else { return }
         SoundPlayer.shared.play("trick")
@@ -155,9 +167,7 @@ final class GameViewModel: TableVM {
             SoundPlayer.shared.haptic(.medium)
         }
         displayTrick = last
-        try? await Task.sleep(for: .milliseconds(1250))
-        displayTrick = nil
-        refresh()
+        try? await Task.sleep(for: .milliseconds(1100))
     }
 
     // MARK: - 人类操作
@@ -174,6 +184,7 @@ final class GameViewModel: TableVM {
         guard let e = engine, e.phase == .declare, e.declarer == humanSeat else { return }
         try? e.declareTrump(suit)
         SoundPlayer.shared.play("trump")
+        selected = Set(e.kitty.map(\.id)) // 底牌默认选中,一眼看清哪些是底牌
         refresh()
         driveAI()
     }
@@ -193,6 +204,7 @@ final class GameViewModel: TableVM {
         let cards = myHand.filter { selected.contains($0.id) }
         guard e.validatePlay(seat: humanSeat, cards: cards) else { return }
         let before = e.tricks.count
+        displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
         try? e.playCards(seat: humanSeat, cards: cards)
         SoundPlayer.shared.play("play")
         SoundPlayer.shared.haptic(.medium)
@@ -212,11 +224,15 @@ final class GameViewModel: TableVM {
     }
 
     func toggleSelect(_ card: Card) {
-        guard canSelectCards else { return }
-        if selected.contains(card.id) {
-            selected.remove(card.id)
-        } else {
+        setSelect(card, !selected.contains(card.id))
+    }
+
+    func setSelect(_ card: Card, _ on: Bool) {
+        guard canSelectCards, selected.contains(card.id) != on else { return }
+        if on {
             selected.insert(card.id)
+        } else {
+            selected.remove(card.id)
         }
         SoundPlayer.shared.play("select")
         SoundPlayer.shared.haptic(.light)
@@ -264,7 +280,6 @@ final class GameViewModel: TableVM {
         case .kitty:
             return declarer == humanSeat ? "请选 \(kittySize) 张牌扣底" : "\(playerName(declarer)) 扣底中…"
         case .play:
-            if displayTrick != nil { return "" }
             return turn == humanSeat ? (isLeadTurn ? "你首攻" : "轮到你出牌") : "等待 \(playerName(turn)) 出牌…"
         case .done:
             return "本局结束"

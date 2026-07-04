@@ -125,21 +125,30 @@ public func deal(_ cards: [Card], players: Int) -> DealResult {
     return DealResult(hands: hands, kitty: Array(cards[i...]), kittySize: kittySize, perHand: perHand)
 }
 
-/// 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
-public func sideSuitOrder(_ trumpSuit: String) -> [String] {
-    switch trumpSuit {
-    case "S": return ["H", "C", "D"] // 红黑红
-    case "C": return ["H", "S", "D"] // 红黑红
-    case "H": return ["S", "D", "C"] // 黑红黑
-    case "D": return ["S", "H", "C"] // 黑红黑
-    default: return ["S", "H", "C", "D"] // 未亮主:黑红黑红
+/// 边花色展示顺序:按手牌里实际存在的边花色动态交错(黑红穿插,不易看错)。
+/// 多的那种颜色排外侧、少的穿插;整门被扣掉/打光后自动重排。
+public func sideSuitOrder(_ present: Set<String>) -> [String] {
+    let blacks = ["S", "C"].filter { present.contains($0) }
+    let reds = ["H", "D"].filter { present.contains($0) }
+    let (longer, shorter) = reds.count > blacks.count ? (reds, blacks) : (blacks, reds)
+    var out: [String] = []
+    for i in 0..<longer.count {
+        out.append(longer[i])
+        if i < shorter.count {
+            out.append(shorter[i])
+        }
     }
+    return out
 }
 
 /// 整理手牌(展示用):主牌在前,组内从大到小;相同的牌相邻(对子不被拆)
 public func sortHand(_ hand: [Card], _ trumpSuit: String) -> [Card] {
+    var present: Set<String> = []
+    for c in hand where cardGroup(c, trumpSuit) != "TRUMP" {
+        present.insert(c.suit)
+    }
     var groupOrder = ["TRUMP": 0]
-    for (i, s) in sideSuitOrder(trumpSuit).enumerated() {
+    for (i, s) in sideSuitOrder(present).enumerated() {
         groupOrder[s] = i + 1
     }
     let suitOrder = ["S": 0, "H": 1, "D": 2, "C": 3, "JOKER": 4]

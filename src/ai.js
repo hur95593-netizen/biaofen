@@ -207,6 +207,8 @@ export function aiLead(g, seat) {
   const t = g.trumpSuit, hand = g.hands[seat];
   const seen = seenCards(g);
   const risky = group => ruffRisk(g, seat, group);
+  const throwCards = leadThrow(g, seat, seen);
+  if (throwCards) return throwCards; // 甩牌:必大的主一把甩掉,省时又稳
   const run = leadTractor(hand, t, seen);
   if (run) return run; // 拖拉机几乎无解,还能一手甩掉多张
   if (seat === g.declarer) {
@@ -216,6 +218,14 @@ export function aiLead(g, seat) {
   return leadBossPair(hand, t, seen, risky)
     || leadBossSingle(hand, t, seen, risky)
     || smallLead(hand, t);
+}
+
+// 甩牌:手里"必大"(没有任何未见主牌能大过)的主 ≥3 张 → 一把甩掉
+function leadThrow(g, seat, seen) {
+  const t = g.trumpSuit, hand = g.hands[seat];
+  const dominant = trumpOf(hand, t).filter(c => unseenHigher(c, seen, hand, t) === 0);
+  if (dominant.length < 3) return null; // 一两张不值得甩,留着按牌型打
+  return dominant;
 }
 
 // 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
@@ -304,6 +314,7 @@ export function buildFollow(hand, lead, t) {
   const m = handG.length;
   if (m <= N) return handG.concat(ascS(other, t).slice(0, N - m));
   if (lead.type === 'single') return [ascS(handG, t)[0]];
+  if (lead.type === 'throw') return ascS(handG, t).slice(0, N); // 甩牌:垫最小的 N 张
   if (lead.type === 'pair') {
     const pairs = pairList(handG);
     if (pairs.length) return pairs.sort((a, b) => strength(a[0], t) - strength(b[0], t))[0];
@@ -338,6 +349,7 @@ function chooseDump(hand, lead, t, feed) {
   const m = handG.length;
   if (m <= N) return handG.concat(dumpOrder(other, t, feed).slice(0, N - m));
   if (lead.type === 'single') return [dumpOrder(handG, t, feed)[0]];
+  if (lead.type === 'throw') return dumpOrder(handG, t, feed).slice(0, N); // 甩牌:按喂/躲原则垫满 N 张
   if (lead.type === 'pair') {
     const pairs = pairList(handG);
     if (pairs.length) return pairs.sort((a, b) => dumpKey(a[0], t, feed) - dumpKey(b[0], t, feed))[0];
@@ -349,6 +361,7 @@ function chooseDump(hand, lead, t, feed) {
 
 // 在 cardsG 里找压过 minTop 的、同型同长的最小组合;没有返回 null
 function findBeatingInGroup(cardsG, lead, minTop, t) {
+  if (lead.type === 'throw') return null; // 甩牌是"必大"集合,压不了
   if (lead.type === 'single') {
     const c = ascS(cardsG.filter(x => strength(x, t) > minTop), t)[0];
     return c ? [c] : null;

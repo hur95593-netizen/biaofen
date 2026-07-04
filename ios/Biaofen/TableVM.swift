@@ -32,12 +32,15 @@ protocol TableVM: AnyObject, Observable {
     var supportsHint: Bool { get }
     var roomBadge: String? { get } // 联机:房间码;单机 nil
     var toast: String? { get }     // 联机:事件/错误提示;单机 nil
+    var canSelectCards: Bool { get }
+    var kittyIDs: Set<String> { get } // 扣底阶段(自己坐庄):哪些是底牌 → 卡面标记
 
     func playerName(_ seat: Int) -> String
     func relPosition(_ seat: Int) -> Int
     func seatIsBot(_ seat: Int) -> Bool
     func seatConnected(_ seat: Int) -> Bool
     func toggleSelect(_ card: Card)
+    func setSelect(_ card: Card, _ on: Bool) // 滑动批量选牌用
     func humanBid(_ amount: Int)
     func humanDeclare(_ suit: String)
     func humanBury()

@@ -95,21 +95,25 @@ export function deal(cards, players) {
   return { hands, kitty: cards.slice(i), kittySize, perHand };
 }
 
-// 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
-export function sideSuitOrder(trumpSuit) {
-  switch (trumpSuit) {
-    case 'S': return ['H', 'C', 'D']; // 红黑红
-    case 'C': return ['H', 'S', 'D']; // 红黑红
-    case 'H': return ['S', 'D', 'C']; // 黑红黑
-    case 'D': return ['S', 'H', 'C']; // 黑红黑
-    default: return ['S', 'H', 'C', 'D']; // 未亮主:黑红黑红
+// 边花色展示顺序:按手牌里实际存在的边花色动态交错(黑红穿插,不易看错)。
+// 多的那种颜色排外侧、少的穿插;整门被扣掉/打光后自动重排。
+export function sideSuitOrder(present) {
+  const blacks = ['S', 'C'].filter(s => present.has(s));
+  const reds = ['H', 'D'].filter(s => present.has(s));
+  const [longer, shorter] = reds.length > blacks.length ? [reds, blacks] : [blacks, reds];
+  const out = [];
+  for (let i = 0; i < longer.length; i++) {
+    out.push(longer[i]);
+    if (i < shorter.length) out.push(shorter[i]);
   }
+  return out;
 }
 
 // 整理手牌(展示用):主牌在前,组内从大到小
 export function sortHand(hand, trumpSuit) {
+  const present = new Set(hand.filter(c => cardGroup(c, trumpSuit) !== 'TRUMP').map(c => c.suit));
   const groupOrder = { TRUMP: 0 };
-  sideSuitOrder(trumpSuit).forEach((s, i) => { groupOrder[s] = i + 1; });
+  sideSuitOrder(present).forEach((s, i) => { groupOrder[s] = i + 1; });
   const suitOrder = { S: 0, H: 1, D: 2, C: 3, JOKER: 4 };
   return hand.slice().sort((a, b) => {
     const ga = cardGroup(a, trumpSuit), gb = cardGroup(b, trumpSuit);

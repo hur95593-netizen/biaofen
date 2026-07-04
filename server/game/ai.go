@@ -460,6 +460,9 @@ func AiLead(g *Game, seat int) []Card {
 	t, hand := g.TrumpSuit, g.Hands[seat]
 	seen := seenCards(g)
 	risky := func(group string) bool { return ruffRisk(g, seat, group) }
+	if throw := leadThrow(g, seat, seen); throw != nil {
+		return throw // 甩牌:必大的主一把甩掉,省时又稳
+	}
 	if run := leadTractor(hand, t, seen); run != nil {
 		return run // 拖拉机几乎无解,还能一手甩掉多张
 	}
@@ -475,6 +478,22 @@ func AiLead(g *Game, seat int) []Card {
 		return c
 	}
 	return smallLead(hand, t)
+}
+
+// 甩牌:手里"必大"(没有任何未见主牌能大过)的主 ≥3 张 → 一把甩掉
+func leadThrow(g *Game, seat int, seen []Card) []Card {
+	t := g.TrumpSuit
+	hand := g.Hands[seat]
+	var dominant []Card
+	for _, c := range trumpOf(hand, t) {
+		if unseenHigher(c, seen, hand, t) == 0 {
+			dominant = append(dominant, c)
+		}
+	}
+	if len(dominant) < 3 {
+		return nil // 一两张不值得甩,留着按牌型打
+	}
+	return dominant
 }
 
 // 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
@@ -641,6 +660,9 @@ func BuildFollow(hand []Card, lead *Combo, t string) []Card {
 	if lead.Type == "single" {
 		return []Card{ascS(handG, t)[0]}
 	}
+	if lead.Type == "throw" {
+		return ascS(handG, t)[:N] // 甩牌:垫最小的 N 张
+	}
 	if lead.Type == "pair" {
 		pairs := pairList(handG)
 		if len(pairs) > 0 {
@@ -722,6 +744,9 @@ func chooseDump(hand []Card, lead *Combo, t string, feed bool) []Card {
 	if lead.Type == "single" {
 		return []Card{dumpOrder(handG, t, feed)[0]}
 	}
+	if lead.Type == "throw" {
+		return dumpOrder(handG, t, feed)[:N] // 甩牌:按喂/躲原则垫满 N 张
+	}
 	if lead.Type == "pair" {
 		pairs := pairList(handG)
 		if len(pairs) > 0 {
@@ -741,6 +766,9 @@ func chooseDump(hand []Card, lead *Combo, t string, feed bool) []Card {
 
 // 在 cardsG 里找压过 minTop 的、同型同长的最小组合;没有返回 nil
 func findBeatingInGroup(cardsG []Card, lead *Combo, minTop int, t string) []Card {
+	if lead.Type == "throw" {
+		return nil // 甩牌是"必大"集合,压不了
+	}
 	if lead.Type == "single" {
 		var cand []Card
 		for _, c := range cardsG {

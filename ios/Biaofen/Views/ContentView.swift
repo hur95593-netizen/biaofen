@@ -32,6 +32,9 @@ struct ContentView: View {
         .onChange(of: gameVM.inGame) { _, inGame in
             if !inGame && screen == .single { screen = .menu }
         }
+        .onChange(of: screen) { _, s in
+            SoundPlayer.shared.setInGame(s != .menu) // BGM 只在局内播放
+        }
         .onAppear(perform: handleLaunchArgs)
     }
 

@@ -109,6 +109,8 @@ public func isLegalFollow(hand: [Card], lead: Combo, play: [Card], trumpSuit: St
     switch lead.type {
     case .single:
         return true // 任意一张
+    case .throwLead:
+        return true // 甩牌 = 单牌集合:出满该组任意 N 张即可
     case .pair:
         if pairCount(handG) >= 1 {
             return isPairCards(playG) // 有对必须跟对(任意对)

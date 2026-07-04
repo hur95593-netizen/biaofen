@@ -254,21 +254,25 @@ function deal(cards, players) {
   return { hands, kitty: cards.slice(i), kittySize, perHand };
 }
 
-// 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
-function sideSuitOrder(trumpSuit) {
-  switch (trumpSuit) {
-    case 'S': return ['H', 'C', 'D']; // 红黑红
-    case 'C': return ['H', 'S', 'D']; // 红黑红
-    case 'H': return ['S', 'D', 'C']; // 黑红黑
-    case 'D': return ['S', 'H', 'C']; // 黑红黑
-    default: return ['S', 'H', 'C', 'D']; // 未亮主:黑红黑红
+// 边花色展示顺序:按手牌里实际存在的边花色动态交错(黑红穿插,不易看错)。
+// 多的那种颜色排外侧、少的穿插;整门被扣掉/打光后自动重排。
+function sideSuitOrder(present) {
+  const blacks = ['S', 'C'].filter(s => present.has(s));
+  const reds = ['H', 'D'].filter(s => present.has(s));
+  const [longer, shorter] = reds.length > blacks.length ? [reds, blacks] : [blacks, reds];
+  const out = [];
+  for (let i = 0; i < longer.length; i++) {
+    out.push(longer[i]);
+    if (i < shorter.length) out.push(shorter[i]);
   }
+  return out;
 }
 
 // 整理手牌(展示用):主牌在前,组内从大到小
 function sortHand(hand, trumpSuit) {
+  const present = new Set(hand.filter(c => cardGroup(c, trumpSuit) !== 'TRUMP').map(c => c.suit));
   const groupOrder = { TRUMP: 0 };
-  sideSuitOrder(trumpSuit).forEach((s, i) => { groupOrder[s] = i + 1; });
+  sideSuitOrder(present).forEach((s, i) => { groupOrder[s] = i + 1; });
   const suitOrder = { S: 0, H: 1, D: 2, C: 3, JOKER: 4 };
   return hand.slice().sort((a, b) => {
     const ga = cardGroup(a, trumpSuit), gb = cardGroup(b, trumpSuit);
@@ -469,6 +473,7 @@ function isLegalFollow(hand, lead, play, trumpSuit) {
 
   // m > N:组内有取舍,按结构跟牌
   if (lead.type === 'single') return true;             // 任意一张
+  if (lead.type === 'throw') return true;              // 甩牌 = 单牌集合:出满该组任意 N 张即可
 
   if (lead.type === 'pair') {
     if (pairCount(handG) >= 1) return isPair(playG);    // 有对必须跟对(任意对)
@@ -601,15 +606,47 @@ class Game {
     if (!cards.length) return false;
     const ids = new Set(this.hands[seat].map(c => c.id));
     if (!cards.every(c => ids.has(c.id))) return false;
-    if (this.isLeadTurn()) return !!detectCombo(cards, this.trumpSuit);  // 首攻:单/对/拖拉机
+    // 首攻:单/对/拖拉机,或"必大"主牌甩牌
+    if (this.isLeadTurn()) return !!detectCombo(cards, this.trumpSuit) || this.validThrow(seat, cards);
     return isLegalFollow(this.hands[seat], this.leadCombo, cards, this.trumpSuit);
+  }
+
+  // 甩牌合法性:多张主牌,且未见的主里没有任何一张能大过甩出的最小者(必赢)。
+  // 底牌里的主也按"未见"算 → 偏保守,但绝不会甩输。
+  validThrow(seat, cards) {
+    if (cards.length < 2) return false;
+    if (!cards.every(c => isTrump(c, this.trumpSuit))) return false; // 只允许甩主牌(副牌不准甩)
+    const minS = Math.min(...cards.map(c => strength(c, this.trumpSuit)));
+    const seen = [];
+    for (const tr of this.tricks) for (const p of tr.plays) seen.push(...p.cards);
+    for (const p of this.trickPlays) seen.push(...p.cards);
+    // 主牌组全部候选:王 + 所有 3/2 + 主花色 4..A
+    const cands = [{ suit: 'JOKER', rank: 17 }, { suit: 'JOKER', rank: 16 }];
+    for (const s of ['S', 'H', 'D', 'C']) cands.push({ suit: s, rank: 3 }, { suit: s, rank: 2 });
+    for (let r = 4; r <= 14; r++) cands.push({ suit: this.trumpSuit, rank: r });
+    const hand = this.hands[seat];
+    for (const cand of cands) {
+      if (strength(cand, this.trumpSuit) <= minS) continue;
+      let copies = 2;
+      copies -= seen.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+      copies -= hand.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+      if (copies > 0) return false;
+    }
+    return true;
   }
 
   playCards(seat, cards) {
     if (!this.validatePlay(seat, cards)) throw new Error('出牌不合法');
-    if (this.isLeadTurn()) this.leadCombo = detectCombo(cards, this.trumpSuit);
+    let combo = detectCombo(cards, this.trumpSuit);
+    if (this.isLeadTurn()) {
+      if (!combo) {
+        // 甩牌 Combo(同强度的跟牌压不过它 → 必归首家)
+        combo = { type: 'throw', length: cards.length, group: 'TRUMP', top: Math.max(...cards.map(c => strength(c, this.trumpSuit))) };
+      }
+      this.leadCombo = combo;
+    }
     this.hands[seat] = removeCards(this.hands[seat], cards);
-    this.trickPlays.push({ seat, cards: cards.slice(), combo: detectCombo(cards, this.trumpSuit) });
+    this.trickPlays.push({ seat, cards: cards.slice(), combo });
     if (this.trickPlays.length === this.players) this._resolveTrick();
     else this.turn = (this.turn + 1) % this.players;
   }
@@ -629,7 +666,7 @@ class Game {
     if (handsEmpty && isXian && win.combo && win.combo.group === 'TRUMP') {
       // 底牌捡分:最后一墩闲家用主牌赢 → 翻底捡分;对子/拖拉机 ×2,单牌 ×1
       const kp = this.buried.reduce((a, c) => a + pointValue(c), 0);
-      const mult = win.combo.type === 'single' ? 1 : 2;
+      const mult = (win.combo.type === 'single' || win.combo.type === 'throw') ? 1 : 2; // 甩牌是单牌集合,不翻倍
       this.lastTrickBonus = kp * mult;
       this.xianPoints += this.lastTrickBonus;
       for (const c of this.buried) if (pointValue(c)) this.xianCaptured.push(c);
@@ -886,6 +923,8 @@ function aiLead(g, seat) {
   const t = g.trumpSuit, hand = g.hands[seat];
   const seen = seenCards(g);
   const risky = group => ruffRisk(g, seat, group);
+  const throwCards = leadThrow(g, seat, seen);
+  if (throwCards) return throwCards; // 甩牌:必大的主一把甩掉,省时又稳
   const run = leadTractor(hand, t, seen);
   if (run) return run; // 拖拉机几乎无解,还能一手甩掉多张
   if (seat === g.declarer) {
@@ -895,6 +934,14 @@ function aiLead(g, seat) {
   return leadBossPair(hand, t, seen, risky)
     || leadBossSingle(hand, t, seen, risky)
     || smallLead(hand, t);
+}
+
+// 甩牌:手里"必大"(没有任何未见主牌能大过)的主 ≥3 张 → 一把甩掉
+function leadThrow(g, seat, seen) {
+  const t = g.trumpSuit, hand = g.hands[seat];
+  const dominant = trumpOf(hand, t).filter(c => unseenHigher(c, seen, hand, t) === 0);
+  if (dominant.length < 3) return null; // 一两张不值得甩,留着按牌型打
+  return dominant;
 }
 
 // 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
@@ -983,6 +1030,7 @@ function buildFollow(hand, lead, t) {
   const m = handG.length;
   if (m <= N) return handG.concat(ascS(other, t).slice(0, N - m));
   if (lead.type === 'single') return [ascS(handG, t)[0]];
+  if (lead.type === 'throw') return ascS(handG, t).slice(0, N); // 甩牌:垫最小的 N 张
   if (lead.type === 'pair') {
     const pairs = pairList(handG);
     if (pairs.length) return pairs.sort((a, b) => strength(a[0], t) - strength(b[0], t))[0];
@@ -1017,6 +1065,7 @@ function chooseDump(hand, lead, t, feed) {
   const m = handG.length;
   if (m <= N) return handG.concat(dumpOrder(other, t, feed).slice(0, N - m));
   if (lead.type === 'single') return [dumpOrder(handG, t, feed)[0]];
+  if (lead.type === 'throw') return dumpOrder(handG, t, feed).slice(0, N); // 甩牌:按喂/躲原则垫满 N 张
   if (lead.type === 'pair') {
     const pairs = pairList(handG);
     if (pairs.length) return pairs.sort((a, b) => dumpKey(a[0], t, feed) - dumpKey(b[0], t, feed))[0];
@@ -1028,6 +1077,7 @@ function chooseDump(hand, lead, t, feed) {
 
 // 在 cardsG 里找压过 minTop 的、同型同长的最小组合;没有返回 null
 function findBeatingInGroup(cardsG, lead, minTop, t) {
+  if (lead.type === 'throw') return null; // 甩牌是"必大"集合,压不了
   if (lead.type === 'single') {
     const c = ascS(cardsG.filter(x => strength(x, t) > minTop), t)[0];
     return c ? [c] : null;
@@ -1363,7 +1413,8 @@ function renderPlayActions(bar) {
     valid = g.validatePlay(HUMAN, cards);
     if (isLead) {
       const c = detectCombo(cards, g.trumpSuit);
-      info = c ? comboName(c) : '首攻必须是 单张/对子/拖拉机';
+      if (c) info = comboName(c);
+      else info = valid ? `甩牌（${cards.length} 张必大主牌）` : '首攻:单张/对子/拖拉机,或必大主牌甩牌';
     } else {
       info = valid ? `跟牌 ${cards.length} 张` : '不符合跟牌规则';
     }
@@ -1380,6 +1431,7 @@ function renderPlayActions(bar) {
 function comboName(c) {
   if (c.type === 'single') return '单张';
   if (c.type === 'pair') return '对子';
+  if (c.type === 'throw') return `甩牌（${c.length} 张）`;
   return `拖拉机（${c.pairs} 连对）`;
 }
 function mkBtn(text, on, extra = '') {
@@ -1421,18 +1473,19 @@ function doPlay(seat, cards) {
   const prev = g.tricks.length;
   try { g.playCards(seat, cards); }
   catch (e) { flash('出牌不合法'); return; }
+  frozenTrick = null; // 新一圈开始出牌 → 收走上一圈的展示
   selected.clear();
   flash('');
   SFX.play();
   if (g.tricks.length > prev) {
     const tr = g.tricks[g.tricks.length - 1];
-    frozenTrick = tr;
+    frozenTrick = tr; // 整墩留在桌上,直到下一圈有人出牌
     const isXian = tr.winnerSeat !== g.declarer;
     SFX.trick();
     flash(`${seatName(tr.winnerSeat)} 收墩` + (isXian && tr.points ? `,闲家 +${tr.points} 分` : ''));
     render();
     clearTimeout(aiTimer);
-    aiTimer = setTimeout(() => { frozenTrick = null; tick(); }, TRICK_PAUSE);
+    aiTimer = setTimeout(() => tick(), TRICK_PAUSE);
   } else {
     tick();
   }

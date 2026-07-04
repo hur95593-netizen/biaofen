@@ -129,6 +129,17 @@ struct TopBar<VM: TableVM>: View {
             }
 
             Button {
+                SoundPlayer.shared.musicOn.toggle()
+            } label: {
+                Image(systemName: "music.note")
+                    .font(.system(size: 13))
+                    .foregroundStyle(SoundPlayer.shared.musicOn ? .yellow : .white.opacity(0.4))
+                    .padding(6)
+                    .background(Circle().fill(.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
                 SoundPlayer.shared.muted.toggle()
             } label: {
                 Image(systemName: SoundPlayer.shared.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
@@ -163,7 +174,7 @@ struct OpponentView<VM: TableVM>: View {
     let seat: Int
 
     private var isTurn: Bool {
-        (vm.phase == .play && vm.turn == seat && vm.displayTrick == nil)
+        (vm.phase == .play && vm.turn == seat)
             || (vm.phase == .bidding && vm.bidTurn == seat)
     }
 
@@ -301,6 +312,7 @@ struct PlayRow: View {
 
 struct MyHandView<VM: TableVM>: View {
     let vm: VM
+    @State private var dragMode: Bool? // 滑动选牌:按下首张牌决定本次是"选中"还是"取消"
 
     var body: some View {
         GeometryReader { geo in
@@ -313,24 +325,51 @@ struct MyHandView<VM: TableVM>: View {
                 let total = cardW + step * CGFloat(n - 1)
                 let startX = (geo.size.width - total) / 2
 
-                ForEach(Array(vm.myHand.enumerated()), id: \.element.id) { i, card in
-                    let isSel = vm.selected.contains(card.id)
-                    CardFace(card: card, width: cardW)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: cardW * 0.14)
-                                .strokeBorder(isSel ? Color.yellow : .clear, lineWidth: 2.5)
-                        )
-                        .position(
-                            x: startX + cardW / 2 + CGFloat(i) * step,
-                            y: geo.size.height - cardH / 2 + (isSel ? -16 : 0)
-                        )
-                        .zIndex(Double(i))
-                        .onTapGesture {
+                ZStack {
+                    ForEach(Array(vm.myHand.enumerated()), id: \.element.id) { i, card in
+                        let isSel = vm.selected.contains(card.id)
+                        CardFace(card: card, width: cardW)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: cardW * 0.14)
+                                    .strokeBorder(isSel ? Color.yellow : .clear, lineWidth: 2.5)
+                            )
+                            .overlay(alignment: .top) {
+                                if vm.phase == .kitty && vm.kittyIDs.contains(card.id) {
+                                    Text("底")
+                                        .font(.system(size: 10, weight: .black))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(.orange))
+                                        .offset(y: -9)
+                                }
+                            }
+                            .position(
+                                x: startX + cardW / 2 + CGFloat(i) * step,
+                                y: geo.size.height - cardH / 2 + (isSel ? -16 : 0)
+                            )
+                            .zIndex(Double(i))
+                    }
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .contentShape(Rectangle())
+                // 单指按下/滑动都走同一手势:点一下=切换一张,划过去=批量选
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            guard vm.canSelectCards, n > 0 else { return }
+                            let rel = v.location.x - startX
+                            guard rel >= -6, rel <= total + 6 else { return }
+                            let idx = max(0, min(n - 1, Int(rel / max(step, 1))))
+                            let card = vm.myHand[idx]
+                            let mode = dragMode ?? !vm.selected.contains(card.id)
+                            dragMode = mode
                             withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
-                                vm.toggleSelect(card)
+                                vm.setSelect(card, mode)
                             }
                         }
-                }
+                        .onEnded { _ in dragMode = nil }
+                )
             }
         }
     }
@@ -392,7 +431,7 @@ struct ActionBar<VM: TableVM>: View {
                     BarButton(title: "确认扣底", disabled: vm.selected.count != vm.kittySize) { vm.humanBury() }
                 }
             case .play:
-                if vm.turn == vm.humanSeat && vm.displayTrick == nil {
+                if vm.turn == vm.humanSeat {
                     if vm.supportsHint {
                         BarButton(title: "提示", secondary: true) {
                             withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) { vm.hint() }

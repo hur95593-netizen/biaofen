@@ -12,13 +12,43 @@ final class SoundPlayer {
         didSet { UserDefaults.standard.set(muted, forKey: "sound.muted") }
     }
 
+    var musicOn: Bool {
+        didSet {
+            UserDefaults.standard.set(musicOn, forKey: "sound.musicOn")
+            if musicOn { startMusic() } else { stopMusic() }
+        }
+    }
+
     private var players: [String: AVAudioPlayer] = [:]
+    private var musicPlayer: AVAudioPlayer?
+    private var inGame = false
 
     private init() {
         muted = UserDefaults.standard.bool(forKey: "sound.muted")
+        musicOn = UserDefaults.standard.object(forKey: "sound.musicOn") as? Bool ?? true
         // ambient:跟随静音键、不打断用户正在听的音乐
         try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)
+    }
+
+    /// 进入/离开牌局时调用:BGM 只在局内播放
+    func setInGame(_ on: Bool) {
+        inGame = on
+        if on && musicOn { startMusic() } else { stopMusic() }
+    }
+
+    private func startMusic() {
+        guard inGame, musicOn else { return }
+        if musicPlayer == nil, let url = Bundle.main.url(forResource: "bgm", withExtension: "wav") {
+            musicPlayer = try? AVAudioPlayer(contentsOf: url)
+            musicPlayer?.numberOfLoops = -1
+            musicPlayer?.volume = 0.22 // 衬底,别盖过音效
+        }
+        musicPlayer?.play()
+    }
+
+    private func stopMusic() {
+        musicPlayer?.pause()
     }
 
     /// name ∈ select | play | trick | bid | trump | win | lose

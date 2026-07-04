@@ -34,6 +34,9 @@ final class OnlineViewModel: TableVM {
     private var leaving = false
     private var reconnectAttempt = 0
     private var prevTricksPlayed = 0
+    private var wasMyTurn = false
+    private var lastHandNo = -1
+    private var lastKittyHand = -1
     private var displayTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
 
@@ -74,6 +77,7 @@ final class OnlineViewModel: TableVM {
     var nextBidLevel: Int { state?.nextBidLevel ?? 100 }
     var supportsHint: Bool { false } // 联机没有全量牌局信息,不提供提示
     var roomBadge: String? { roomCode.isEmpty ? nil : "房号 \(roomCode)" }
+    var kittyIDs: Set<String> { Set(state?.kittyIds ?? []) }
 
     var displayTrick: Trick?
     var selected: Set<String> = []
@@ -121,7 +125,9 @@ final class OnlineViewModel: TableVM {
         let cards = myHand.filter { selected.contains($0.id) }
         guard !cards.isEmpty else { return false }
         if trickPlays.isEmpty {
-            return detectCombo(cards, trumpSuit) != nil
+            if detectCombo(cards, trumpSuit) != nil { return true }
+            // 甩牌:客户端没有完整记牌信息,多张主牌先放行,由服务器裁决(非法会 toast)
+            return cards.count >= 2 && cards.allSatisfy { isTrump($0, trumpSuit) }
         }
         guard let lead = trickPlays.first?.combo else { return false }
         return isLegalFollow(hand: myHand, lead: lead, play: cards, trumpSuit: trumpSuit)
@@ -139,7 +145,6 @@ final class OnlineViewModel: TableVM {
         case .kitty:
             return declarer == humanSeat ? "请选 \(kittySize) 张牌扣底" : "\(playerName(declarer)) 扣底中…"
         case .play:
-            if displayTrick != nil { return "" }
             return turn == humanSeat ? (trickPlays.isEmpty ? "你首攻" : "轮到你出牌") : "等待 \(playerName(turn)) 出牌…"
         case .done:
             return "本局结束"
@@ -237,11 +242,15 @@ final class OnlineViewModel: TableVM {
     }
 
     func toggleSelect(_ card: Card) {
-        guard canSelectCards else { return }
-        if selected.contains(card.id) {
-            selected.remove(card.id)
-        } else {
+        setSelect(card, !selected.contains(card.id))
+    }
+
+    func setSelect(_ card: Card, _ on: Bool) {
+        guard canSelectCards, selected.contains(card.id) != on else { return }
+        if on {
             selected.insert(card.id)
+        } else {
+            selected.remove(card.id)
         }
         SoundPlayer.shared.play("select")
         SoundPlayer.shared.haptic(.light)
@@ -284,19 +293,28 @@ final class OnlineViewModel: TableVM {
         }
         let newTricks = s.tricksPlayed ?? 0
         if newTricks > prevTricksPlayed, (s.trickPlays ?? []).isEmpty, let last = s.lastTrick {
-            // 一墩刚收走:把整墩亮出来停一拍(服务器端 AI 也会等 1.6s 再首攻)
+            // 一墩刚收走:整墩留在桌上(带赢家标记),下一圈有人出牌的状态到达时才清掉
             SoundPlayer.shared.play("trick")
             displayTrick = last
-            displayTask?.cancel()
-            displayTask = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(1250))
-                self?.displayTrick = nil
-            }
         } else if !(s.trickPlays ?? []).isEmpty {
-            displayTask?.cancel()
             displayTrick = nil
         }
         prevTricksPlayed = newTricks
+        // 轮到你出牌:提示音
+        let mine = s.phase == "play" && s.turn == s.mySeat
+        if mine && !wasMyTurn && newTricks > 0 {
+            SoundPlayer.shared.play("yourturn")
+        }
+        wasMyTurn = mine
+        // 新一局发牌音 + 自己坐庄拿底牌时默认选中底牌
+        if let hn = s.handNo, hn != lastHandNo, s.started {
+            lastHandNo = hn
+            SoundPlayer.shared.play("deal")
+        }
+        if s.phase == "kitty", s.declarer == s.mySeat, lastKittyHand != (s.handNo ?? -1) {
+            lastKittyHand = s.handNo ?? -1
+            selected = Set(s.kittyIds ?? [])
+        }
         state = s
         stage = s.started ? .playing : .lobby
         if demoMode {

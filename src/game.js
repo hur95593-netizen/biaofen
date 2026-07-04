@@ -1,6 +1,6 @@
 // src/game.js — 「飙分」一桌/一局流程状态机
 // 阶段 phase: bidding → declare → kitty → play → done
-import { buildDeck, shuffle, deal } from './cards.js';
+import { buildDeck, shuffle, deal, isTrump, strength } from './cards.js';
 import { detectCombo, resolveTrick } from './combos.js';
 import { isLegalFollow } from './follow.js';
 
@@ -111,15 +111,47 @@ export class Game {
     if (!cards.length) return false;
     const ids = new Set(this.hands[seat].map(c => c.id));
     if (!cards.every(c => ids.has(c.id))) return false;
-    if (this.isLeadTurn()) return !!detectCombo(cards, this.trumpSuit);  // 首攻:单/对/拖拉机
+    // 首攻:单/对/拖拉机,或"必大"主牌甩牌
+    if (this.isLeadTurn()) return !!detectCombo(cards, this.trumpSuit) || this.validThrow(seat, cards);
     return isLegalFollow(this.hands[seat], this.leadCombo, cards, this.trumpSuit);
+  }
+
+  // 甩牌合法性:多张主牌,且未见的主里没有任何一张能大过甩出的最小者(必赢)。
+  // 底牌里的主也按"未见"算 → 偏保守,但绝不会甩输。
+  validThrow(seat, cards) {
+    if (cards.length < 2) return false;
+    if (!cards.every(c => isTrump(c, this.trumpSuit))) return false; // 只允许甩主牌(副牌不准甩)
+    const minS = Math.min(...cards.map(c => strength(c, this.trumpSuit)));
+    const seen = [];
+    for (const tr of this.tricks) for (const p of tr.plays) seen.push(...p.cards);
+    for (const p of this.trickPlays) seen.push(...p.cards);
+    // 主牌组全部候选:王 + 所有 3/2 + 主花色 4..A
+    const cands = [{ suit: 'JOKER', rank: 17 }, { suit: 'JOKER', rank: 16 }];
+    for (const s of ['S', 'H', 'D', 'C']) cands.push({ suit: s, rank: 3 }, { suit: s, rank: 2 });
+    for (let r = 4; r <= 14; r++) cands.push({ suit: this.trumpSuit, rank: r });
+    const hand = this.hands[seat];
+    for (const cand of cands) {
+      if (strength(cand, this.trumpSuit) <= minS) continue;
+      let copies = 2;
+      copies -= seen.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+      copies -= hand.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+      if (copies > 0) return false;
+    }
+    return true;
   }
 
   playCards(seat, cards) {
     if (!this.validatePlay(seat, cards)) throw new Error('出牌不合法');
-    if (this.isLeadTurn()) this.leadCombo = detectCombo(cards, this.trumpSuit);
+    let combo = detectCombo(cards, this.trumpSuit);
+    if (this.isLeadTurn()) {
+      if (!combo) {
+        // 甩牌 Combo(同强度的跟牌压不过它 → 必归首家)
+        combo = { type: 'throw', length: cards.length, group: 'TRUMP', top: Math.max(...cards.map(c => strength(c, this.trumpSuit))) };
+      }
+      this.leadCombo = combo;
+    }
     this.hands[seat] = removeCards(this.hands[seat], cards);
-    this.trickPlays.push({ seat, cards: cards.slice(), combo: detectCombo(cards, this.trumpSuit) });
+    this.trickPlays.push({ seat, cards: cards.slice(), combo });
     if (this.trickPlays.length === this.players) this._resolveTrick();
     else this.turn = (this.turn + 1) % this.players;
   }
@@ -139,7 +171,7 @@ export class Game {
     if (handsEmpty && isXian && win.combo && win.combo.group === 'TRUMP') {
       // 底牌捡分:最后一墩闲家用主牌赢 → 翻底捡分;对子/拖拉机 ×2,单牌 ×1
       const kp = this.buried.reduce((a, c) => a + pointValue(c), 0);
-      const mult = win.combo.type === 'single' ? 1 : 2;
+      const mult = (win.combo.type === 'single' || win.combo.type === 'throw') ? 1 : 2; // 甩牌是单牌集合,不翻倍
       this.lastTrickBonus = kp * mult;
       this.xianPoints += this.lastTrickBonus;
       for (const c of this.buried) if (pointValue(c)) this.xianCaptured.push(c);
