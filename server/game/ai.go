@@ -227,6 +227,59 @@ func unseenHigherPair(card Card, seen, hand []Card, t string) int {
 	return cnt
 }
 
+// 从打过的墩推断:谁在哪个组已经断门(没跟上首攻组)
+func voidGroups(g *Game) map[int]map[string]bool {
+	out := map[int]map[string]bool{}
+	mark := func(seat int, group string) {
+		if out[seat] == nil {
+			out[seat] = map[string]bool{}
+		}
+		out[seat][group] = true
+	}
+	scan := func(plays []Play) {
+		if len(plays) == 0 || plays[0].Combo == nil {
+			return
+		}
+		lead := plays[0].Combo.Group
+		for _, p := range plays[1:] {
+			for _, c := range p.Cards {
+				if CardGroup(c, g.TrumpSuit) != lead {
+					mark(p.Seat, lead)
+					break
+				}
+			}
+		}
+	}
+	for _, tr := range g.Tricks {
+		scan(tr.Plays)
+	}
+	scan(g.TrickPlays)
+	return out
+}
+
+// 我在该边花色的赢牌会不会被对头用主砸掉:对头断了这门、且没断主、场上还有主
+func ruffRisk(g *Game, seat int, group string) bool {
+	if group == "TRUMP" {
+		return false
+	}
+	if othersTrumps(g, seat) <= 0 {
+		return false
+	}
+	voids := voidGroups(g)
+	for o := 0; o < g.Players; o++ {
+		if o == seat {
+			continue
+		}
+		if (seat == g.Declarer) == (o == g.Declarer) {
+			continue // 只怕对头,不怕队友
+		}
+		if voids[o][group] && !voids[o]["TRUMP"] {
+			return true
+		}
+	}
+	return false
+}
+
 // 对手手里(约)还剩多少主。底牌里的主看不见 → 宁可高估,多拉一轮
 func othersTrumps(g *Game, seat int) int {
 	t := g.TrumpSuit
@@ -249,6 +302,8 @@ func othersTrumps(g *Game, seat int) int {
 // JS Math.round:恰好 .5 时向 +∞ 取整(与 Go math.Round 的"远离零"不同)
 func jsRound(x float64) int { return int(math.Floor(x + 0.5)) }
 
+// bidTarget 以"坐庄实力"评估手牌 → 我最多敢喊到多少
+// 考量:王/常主(硬控制)、最长花色(主的长度)、对子(结构)、短门(可扣底做空门去杀)
 func bidTarget(hand []Card) int {
 	jok, threes, twos := 0, 0, 0
 	sc := map[string]int{"S": 0, "H": 0, "D": 0, "C": 0}
@@ -264,28 +319,43 @@ func bidTarget(hand []Card) int {
 			sc[c.Suit]++
 		}
 	}
-	best := 0
+	bestSuit, best := "S", 0
 	for _, s := range Suits {
 		if sc[s] > best {
-			best = sc[s]
+			bestSuit, best = s, sc[s]
 		}
 	}
-	str := float64(jok)*1.5 + float64(threes)*1.2 + float64(twos)*1.0 + float64(best)*0.4
-	// 烂牌返回 <100(弃喊),只有够强的手牌才往上喊;上限 200
-	v := 100 + 10*jsRound(str-13)
+	shorts := 0 // 亮主后可扣底清空的短门(≤1 张)→ 空门用主杀,是坐庄的大优势
+	for _, s := range Suits {
+		if s != bestSuit && sc[s] <= 1 {
+			shorts++
+		}
+	}
+	str := float64(jok)*1.6 + float64(threes)*1.3 + float64(twos)*1.0 +
+		float64(best)*0.5 + float64(PairCount(hand))*0.3 + float64(shorts)*0.8
+	// 烂牌返回 <100(弃喊);实力越强目标越高,上限 200
+	v := 100 + 10*jsRound(str-15)
 	if v > 200 {
 		return 200
 	}
 	return v
 }
 
-// AiBid 返回喊分数;0 = 不喊
+// AiBid 返回喊分数;0 = 不喊。实力大幅超过当前价 → 跳喊施压,吓退还想跟的人
 func AiBid(g *Game, seat int) int {
 	lv := g.NextBidLevel()
-	if bidTarget(g.Hands[seat]) >= lv {
-		return lv // 愿意就加最小一档,否则放弃
+	target := bidTarget(g.Hands[seat])
+	if target < lv {
+		return 0
 	}
-	return 0
+	if target >= lv+30 {
+		bid := lv + 20 // 跳两档:抬高对方跟价成本
+		if bid > 200 {
+			bid = 200
+		}
+		return bid
+	}
+	return lv
 }
 
 // AiTrump 亮主:选最长花色当主
@@ -385,9 +455,11 @@ func AiBury(g *Game, seat int) []Card {
 }
 
 // AiLead 首攻:拖拉机 > 庄家控主 > boss 对子 > boss 单张 > 小牌过渡
+// boss 兑现会避开"对头已断门、可能用主砸"的花色;拖拉机结构免疫(压它需要同长主拖拉机)不用避
 func AiLead(g *Game, seat int) []Card {
 	t, hand := g.TrumpSuit, g.Hands[seat]
 	seen := seenCards(g)
+	risky := func(group string) bool { return ruffRisk(g, seat, group) }
 	if run := leadTractor(hand, t, seen); run != nil {
 		return run // 拖拉机几乎无解,还能一手甩掉多张
 	}
@@ -396,10 +468,10 @@ func AiLead(g *Game, seat int) []Card {
 			return draw
 		}
 	}
-	if p := leadBossPair(hand, t, seen); p != nil {
+	if p := leadBossPair(hand, t, seen, risky); p != nil {
 		return p
 	}
-	if c := leadBossSingle(hand, t, seen); c != nil {
+	if c := leadBossSingle(hand, t, seen, risky); c != nil {
 		return c
 	}
 	return smallLead(hand, t)
@@ -470,13 +542,16 @@ func leadDrawTrump(g *Game, seat int, seen []Card) []Card {
 	return nil
 }
 
-// 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20)
-func leadBossPair(hand []Card, t string, seen []Card) []Card {
+// 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20);避开会被主对砸的花色
+func leadBossPair(hand []Card, t string, seen []Card, risky func(string) bool) []Card {
 	var best []Card
 	bestScore := math.MinInt
 	for _, p := range pairList(hand) {
 		c := p[0]
 		if unseenHigherPair(c, seen, hand, t) > 0 {
+			continue
+		}
+		if g := CardGroup(c, t); g != "TRUMP" && risky(g) {
 			continue
 		}
 		score := PointValue(c)*20 + Strength(c, t)
@@ -487,8 +562,8 @@ func leadBossPair(hand []Card, t string, seen []Card) []Card {
 	return best
 }
 
-// 边花色里"当前最大"的落单牌 → 兑现,优先带分的;不拆对子
-func leadBossSingle(hand []Card, t string, seen []Card) []Card {
+// 边花色里"当前最大"的落单牌 → 兑现,优先带分的;不拆对子;避开会被砸的花色
+func leadBossSingle(hand []Card, t string, seen []Card, risky func(string) bool) []Card {
 	var best Card
 	bestScore := math.MinInt
 	for _, e := range orderedByKey(hand) {
@@ -499,7 +574,7 @@ func leadBossSingle(hand []Card, t string, seen []Card) []Card {
 		if CardGroup(c, t) == "TRUMP" {
 			continue // 主 boss 由庄家控主逻辑处理;闲家拉主反帮庄
 		}
-		if unseenHigher(c, seen, hand, t) > 0 {
+		if unseenHigher(c, seen, hand, t) > 0 || risky(c.Suit) {
 			continue
 		}
 		score := PointValue(c)*20 + Strength(c, t)

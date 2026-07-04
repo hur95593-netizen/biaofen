@@ -23,15 +23,25 @@ struct CardFace: View {
                 .strokeBorder(Color.black.opacity(0.12), lineWidth: 1)
 
             if card.isJoker {
-                VStack(spacing: 0) {
+                // 角标锚定左上:牌堆重叠时露出的左边缘也能一眼认出大小王
+                VStack(spacing: -width * 0.02) {
                     Text(card.rank == BIG_JOKER ? "大" : "小")
                         .font(.system(size: width * 0.30, weight: .heavy))
                     Text("王")
                         .font(.system(size: width * 0.30, weight: .heavy))
                     Text("★")
-                        .font(.system(size: width * 0.26))
+                        .font(.system(size: width * 0.22))
                 }
                 .foregroundStyle(color)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.leading, width * 0.08)
+                .padding(.top, width * 0.06)
+
+                Text("🃏")
+                    .font(.system(size: width * 0.40))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, width * 0.08)
+                    .padding(.bottom, width * 0.08)
             } else {
                 VStack(alignment: .leading, spacing: -width * 0.04) {
                     Text(SuitStyle.rankText(card.rank))

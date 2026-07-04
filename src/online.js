@@ -346,6 +346,18 @@ function renderBidActions(bar) {
     if (amt > 200) break;
     bar.appendChild(mkBtn(`喊 ${amt}`, () => send({ type: 'bid', amount: amt })));
   }
+  // 任意跳喊:更高档位一键直达
+  if (lv + 30 <= 200) {
+    const sel = document.createElement('select');
+    sel.className = 'btn';
+    for (let amt = lv + 30; amt <= 200; amt += 10) {
+      const o = document.createElement('option');
+      o.value = amt; o.textContent = `喊 ${amt}`;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => send({ type: 'bid', amount: +sel.value });
+    bar.appendChild(sel);
+  }
   bar.appendChild(mkBtn('不喊', () => send({ type: 'bid', amount: 0 }), 'ghost'));
 }
 

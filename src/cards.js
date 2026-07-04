@@ -95,9 +95,21 @@ export function deal(cards, players) {
   return { hands, kitty: cards.slice(i), kittySize, perHand };
 }
 
+// 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
+export function sideSuitOrder(trumpSuit) {
+  switch (trumpSuit) {
+    case 'S': return ['H', 'C', 'D']; // 红黑红
+    case 'C': return ['H', 'S', 'D']; // 红黑红
+    case 'H': return ['S', 'D', 'C']; // 黑红黑
+    case 'D': return ['S', 'H', 'C']; // 黑红黑
+    default: return ['S', 'H', 'C', 'D']; // 未亮主:黑红黑红
+  }
+}
+
 // 整理手牌(展示用):主牌在前,组内从大到小
 export function sortHand(hand, trumpSuit) {
-  const groupOrder = { TRUMP: 0, S: 1, H: 2, D: 3, C: 4 };
+  const groupOrder = { TRUMP: 0 };
+  sideSuitOrder(trumpSuit).forEach((s, i) => { groupOrder[s] = i + 1; });
   const suitOrder = { S: 0, H: 1, D: 2, C: 3, JOKER: 4 };
   return hand.slice().sort((a, b) => {
     const ga = cardGroup(a, trumpSuit), gb = cardGroup(b, trumpSuit);

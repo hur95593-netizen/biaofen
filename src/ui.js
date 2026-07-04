@@ -2,6 +2,7 @@
 import { SUIT_SYMBOL, RANK_LABEL, isJoker, isTrump, sortHand, BIG_JOKER, SUITS } from './cards.js';
 import { detectCombo } from './combos.js';
 import { Game, pointValue } from './game.js';
+import { SFX } from './sfx.js';
 import * as AI from './ai.js';
 
 const HUMAN = 0;
@@ -135,6 +136,7 @@ function renderHand() {
 
 function toggleCard(id) {
   if (selected.has(id)) selected.delete(id); else selected.add(id);
+  SFX.select();
   renderHand(); renderActions();
 }
 function selectedCards() { return g.hands[HUMAN].filter(c => selected.has(c.id)); }
@@ -158,8 +160,20 @@ function renderBidActions(bar) {
   const lv = g.nextBidLevel();
   for (const amt of [lv, lv + 10, lv + 20]) {
     if (amt > 200) break;
-    const b = mkBtn(`喊 ${amt}`, () => { g.placeBid(HUMAN, amt); tick(); });
+    const b = mkBtn(`喊 ${amt}`, () => { g.placeBid(HUMAN, amt); SFX.bid(); tick(); });
     bar.appendChild(b);
+  }
+  // 任意跳喊:更高档位一键直达
+  if (lv + 30 <= 200) {
+    const sel = document.createElement('select');
+    sel.className = 'btn';
+    for (let amt = lv + 30; amt <= 200; amt += 10) {
+      const o = document.createElement('option');
+      o.value = amt; o.textContent = `喊 ${amt}`;
+      sel.appendChild(o);
+    }
+    sel.onchange = () => { g.placeBid(HUMAN, +sel.value); SFX.bid(); tick(); };
+    bar.appendChild(sel);
   }
   bar.appendChild(mkBtn('不喊', () => { g.placeBid(HUMAN, null); tick(); }, 'ghost'));
 }
@@ -227,10 +241,15 @@ function tick() {
   const wait = (fn, ms = AI_DELAY) => { clearTimeout(aiTimer); aiTimer = setTimeout(fn, ms); };
   switch (g.phase) {
     case 'bidding':
-      if (g.bidTurn !== HUMAN) wait(() => { g.placeBid(g.bidTurn, AI.aiBid(g, g.bidTurn)); tick(); });
+      if (g.bidTurn !== HUMAN) wait(() => {
+        const amt = AI.aiBid(g, g.bidTurn);
+        g.placeBid(g.bidTurn, amt);
+        if (amt) SFX.bid();
+        tick();
+      });
       break;
     case 'declare':
-      if (g.declarer !== HUMAN) wait(() => { g.declareTrump(AI.aiTrump(g, g.declarer)); flash(`${seatName(g.declarer)} 亮主 ${SUIT_NAME[g.trumpSuit]}`); tick(); });
+      if (g.declarer !== HUMAN) wait(() => { g.declareTrump(AI.aiTrump(g, g.declarer)); SFX.trump(); flash(`${seatName(g.declarer)} 亮主 ${SUIT_NAME[g.trumpSuit]}`); tick(); });
       break;
     case 'kitty':
       if (g.declarer !== HUMAN) wait(() => { g.buryCards(AI.aiBury(g, g.declarer)); tick(); });
@@ -250,10 +269,12 @@ function doPlay(seat, cards) {
   catch (e) { flash('出牌不合法'); return; }
   selected.clear();
   flash('');
+  SFX.play();
   if (g.tricks.length > prev) {
     const tr = g.tricks[g.tricks.length - 1];
     frozenTrick = tr;
     const isXian = tr.winnerSeat !== g.declarer;
+    SFX.trick();
     flash(`${seatName(tr.winnerSeat)} 收墩` + (isXian && tr.points ? `,闲家 +${tr.points} 分` : ''));
     render();
     clearTimeout(aiTimer);
@@ -289,6 +310,8 @@ function startGame(n) {
 
 function showResult() {
   const r = g.result;
+  if (r.deltas[HUMAN] > 0) SFX.win();
+  else if (r.deltas[HUMAN] < 0) SFX.lose();
   const rows = g.scores.map((sc, i) =>
     `<div class="result-line"><span>${seatName(i)} ${i === r.declarer ? '(庄)' : ''}　本局 ${r.deltas[i] >= 0 ? '+' : ''}${r.deltas[i]}</span><span>累计 ${sc}</span></div>`
   ).join('');
@@ -305,6 +328,13 @@ function showResult() {
     kr.appendChild(cardEl(c, { small: true }));
   $('next').onclick = () => { g.startHand(); selected.clear(); frozenTrick = null; hideOverlay(); flash(''); tick(); };
 }
+
+// 静音开关(记住偏好)
+const sndBtn = document.createElement('button');
+sndBtn.className = 'btn ghost';
+sndBtn.textContent = SFX.muted ? '🔇' : '🔊';
+sndBtn.onclick = () => { sndBtn.textContent = SFX.toggle() ? '🔇' : '🔊'; };
+$('newgame').before(sndBtn);
 
 $('newgame').onclick = showStart;
 showStart();

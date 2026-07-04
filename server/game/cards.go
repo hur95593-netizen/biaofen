@@ -147,9 +147,27 @@ func Deal(cards []Card, players int) DealResult {
 	return DealResult{Hands: hands, Kitty: append([]Card(nil), cards[i:]...), KittySize: kittySize, PerHand: perHand}
 }
 
+// SideSuitOrder 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
+func SideSuitOrder(trumpSuit string) []string {
+	switch trumpSuit {
+	case "S":
+		return []string{"H", "C", "D"} // 红黑红
+	case "C":
+		return []string{"H", "S", "D"} // 红黑红
+	case "H":
+		return []string{"S", "D", "C"} // 黑红黑
+	case "D":
+		return []string{"S", "H", "C"} // 黑红黑
+	}
+	return []string{"S", "H", "C", "D"} // 未亮主:黑红黑红
+}
+
 // 整理手牌(展示用):主牌在前,组内从大到小;相同的牌相邻(对子不被拆)
 func SortHand(hand []Card, trumpSuit string) []Card {
-	groupOrder := map[string]int{"TRUMP": 0, "S": 1, "H": 2, "D": 3, "C": 4}
+	groupOrder := map[string]int{"TRUMP": 0}
+	for i, s := range SideSuitOrder(trumpSuit) {
+		groupOrder[s] = i + 1
+	}
 	suitOrder := map[string]int{"S": 0, "H": 1, "D": 2, "C": 3, "JOKER": 4}
 	a := append([]Card(nil), hand...)
 	sort.SliceStable(a, func(i, j int) bool {

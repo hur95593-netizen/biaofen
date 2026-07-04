@@ -129,6 +129,17 @@ struct TopBar<VM: TableVM>: View {
             }
 
             Button {
+                SoundPlayer.shared.muted.toggle()
+            } label: {
+                Image(systemName: SoundPlayer.shared.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(6)
+                    .background(Circle().fill(.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
+
+            Button {
                 vm.backToMenu()
             } label: {
                 Image(systemName: "house.fill")
@@ -329,6 +340,11 @@ struct MyHandView<VM: TableVM>: View {
 
 struct ActionBar<VM: TableVM>: View {
     let vm: VM
+    @State private var bidAmount = 0 // 跳喊选档;shownBid 用 max 自愈,轮次变化时重置
+
+    private var shownBid: Int {
+        min(max(bidAmount, vm.nextBidLevel), 200)
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -343,7 +359,14 @@ struct ActionBar<VM: TableVM>: View {
             case .bidding:
                 if vm.bidTurn == vm.humanSeat {
                     BarButton(title: "不喊", secondary: true) { vm.humanBid(0) }
-                    BarButton(title: "喊 \(vm.nextBidLevel)") { vm.humanBid(vm.nextBidLevel) }
+                    // 任意跳喊:±10 调档后一键喊出(只要高于当前价,想喊多少喊多少)
+                    stepButton("minus") { bidAmount = max(shownBid - 10, vm.nextBidLevel) }
+                    Text("\(shownBid)")
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(.yellow)
+                        .frame(width: 44)
+                    stepButton("plus") { bidAmount = min(shownBid + 10, 200) }
+                    BarButton(title: "喊 \(shownBid)") { vm.humanBid(shownBid) }
                 }
             case .declare:
                 if vm.declarer == vm.humanSeat {
@@ -382,6 +405,18 @@ struct ActionBar<VM: TableVM>: View {
             }
         }
         .frame(height: 46)
+        .onChange(of: vm.bidTurn) { _, _ in bidAmount = 0 }
+    }
+
+    private func stepButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Color.white.opacity(0.22)))
+        }
+        .buttonStyle(.plain)
     }
 }
 

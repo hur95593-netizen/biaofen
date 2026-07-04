@@ -10,7 +10,7 @@ const read = p => readFileSync(join(dir, p), 'utf8');
 const strip = s => s.replace(/^\s*import\s.*$/gm, '').replace(/^\s*export\s+/gm, '');
 
 // 依赖顺序拼接;ui.js 里的 AI.xxx 还原成 xxx(命名空间导入已去掉)
-const parts = ['src/cards.js', 'src/combos.js', 'src/follow.js', 'src/game.js', 'src/ai.js'].map(p => strip(read(p)));
+const parts = ['src/cards.js', 'src/combos.js', 'src/follow.js', 'src/game.js', 'src/ai.js', 'src/sfx.js'].map(p => strip(read(p)));
 parts.push(strip(read('src/ui.js')).replace(/\bAI\./g, ''));
 const js = parts.join('\n\n');
 

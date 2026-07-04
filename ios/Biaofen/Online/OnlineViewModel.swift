@@ -243,6 +243,8 @@ final class OnlineViewModel: TableVM {
         } else {
             selected.insert(card.id)
         }
+        SoundPlayer.shared.play("select")
+        SoundPlayer.shared.haptic(.light)
     }
 
     // MARK: - 收消息
@@ -273,9 +275,17 @@ final class OnlineViewModel: TableVM {
     }
 
     private func applyState(_ s: RoomState) {
+        let prevPlays = state?.trickPlays?.count ?? 0
+        if (s.trickPlays?.count ?? 0) > prevPlays {
+            SoundPlayer.shared.play("play")
+        }
+        if state?.result == nil, let r = s.result, r.deltas.indices.contains(s.mySeat) {
+            SoundPlayer.shared.play(r.deltas[s.mySeat] > 0 ? "win" : (r.deltas[s.mySeat] < 0 ? "lose" : "trick"))
+        }
         let newTricks = s.tricksPlayed ?? 0
         if newTricks > prevTricksPlayed, (s.trickPlays ?? []).isEmpty, let last = s.lastTrick {
             // 一墩刚收走:把整墩亮出来停一拍(服务器端 AI 也会等 1.6s 再首攻)
+            SoundPlayer.shared.play("trick")
             displayTrick = last
             displayTask?.cancel()
             displayTask = Task { [weak self] in
@@ -306,10 +316,16 @@ final class OnlineViewModel: TableVM {
         case "reconnected":
             showToast("\(name) 重连回来了")
         case "bid":
-            showToast(e.data?.intValue == 0 || e.data?.intValue == nil ? "\(name) 不喊" : "\(name) 喊 \(e.data!.intValue!)")
+            if let amt = e.data?.intValue, amt > 0 {
+                SoundPlayer.shared.play("bid")
+                showToast("\(name) 喊 \(amt)")
+            } else {
+                showToast("\(name) 不喊")
+            }
         case "declarerSet":
             showToast("\(name) 坐庄")
         case "trump":
+            SoundPlayer.shared.play("trump")
             showToast("\(name) 亮主 \(SuitStyle.symbol(e.data?.stringValue ?? ""))")
         case "buried":
             showToast("庄家已扣底")

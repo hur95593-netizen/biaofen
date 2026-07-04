@@ -1,7 +1,7 @@
-// src/ai.js — 电脑玩家(记牌 + 抢分/封锁 + 喂分/躲分)
-import { strength, cardGroup, isTrump, tractorRank } from './cards.js';
+// src/ai.js — 电脑玩家(记牌 + 抢分/封锁 + 喂分/躲分 + 断门防砸 + 跳喊)
+import { strength, cardGroup, isTrump, tractorRank, BIG_JOKER, SMALL_JOKER, SUITS } from './cards.js';
 import { beats, detectCombo } from './combos.js';
-import { maxTractorLen, isLegalFollow } from './follow.js';
+import { maxTractorLen, isLegalFollow, pairCount } from './follow.js';
 import { pointValue } from './game.js';
 
 const ascS = (cards, t) => cards.slice().sort((a, b) => strength(a, t) - strength(b, t));
@@ -57,37 +57,107 @@ function seenCards(g) {
   for (const p of g.trickPlays) out.push(...p.cards);
   return out;
 }
-// 同(边)花色里比 card 更大、且还没出现(未亮出、不在我手)的张数 —— 0 即为该花色当前最大(boss)
-function unseenHigher(card, seen, hand, t) {
-  if (cardGroup(card, t) === 'TRUMP') return 99;
-  const suit = card.suit, s = strength(card, t);
-  let cnt = 0;
-  for (let rank = 4; rank <= 14; rank++) {
-    if (rank === 2 || rank === 3) continue;
-    if (strength({ suit, rank }, t) <= s) continue;
-    let copies = 2;
-    copies -= seen.filter(c => c.suit === suit && c.rank === rank).length;
-    copies -= hand.filter(c => c.suit === suit && c.rank === rank).length;
-    if (copies > 0) cnt += copies;
+// 一个组(边花色或主)的全部候选牌(每种 2 张)
+function groupCandidates(group, t) {
+  if (group !== 'TRUMP') {
+    const out = [];
+    for (let r = 4; r <= 14; r++) out.push({ suit: group, rank: r });
+    return out;
   }
+  const out = [{ suit: 'JOKER', rank: BIG_JOKER }, { suit: 'JOKER', rank: SMALL_JOKER }];
+  for (const s of SUITS) out.push({ suit: s, rank: 3 }, { suit: s, rank: 2 });
+  for (let r = 4; r <= 14; r++) out.push({ suit: t, rank: r });
+  return out;
+}
+
+// cand 还没露面(不在已出牌、不在我手)的张数
+function remainingCopies(cand, seen, hand) {
+  let copies = 2;
+  copies -= seen.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+  copies -= hand.filter(c => c.suit === cand.suit && c.rank === cand.rank).length;
+  return Math.max(copies, 0);
+}
+
+// 组内(边花色与主牌通用)比 card 更大、还没露面的张数 —— 0 即当前最大(boss)
+function unseenHigher(card, seen, hand, t) {
+  const s = strength(card, t);
+  let cnt = 0;
+  for (const cand of groupCandidates(cardGroup(card, t), t))
+    if (strength(cand, t) > s) cnt += remainingCopies(cand, seen, hand);
   return cnt;
 }
 
-// ---- 喊分(逐级 +10,直到超出自己的目标)----
+// 组内比 card 更大、且对手还可能凑成一对的档位数 —— 0 即我的对子无对可压(不含主杀)
+function unseenHigherPair(card, seen, hand, t) {
+  const s = strength(card, t);
+  let cnt = 0;
+  for (const cand of groupCandidates(cardGroup(card, t), t))
+    if (strength(cand, t) > s && remainingCopies(cand, seen, hand) === 2) cnt++;
+  return cnt;
+}
+
+// 从打过的墩推断:谁在哪个组已经断门(没跟上首攻组)。返回 Map(seat → Set(group))
+function voidGroups(g) {
+  const out = new Map();
+  const mark = (seat, group) => { if (!out.has(seat)) out.set(seat, new Set()); out.get(seat).add(group); };
+  const scan = plays => {
+    if (!plays.length || !plays[0].combo) return;
+    const lead = plays[0].combo.group;
+    for (const p of plays.slice(1))
+      if (p.cards.some(c => cardGroup(c, g.trumpSuit) !== lead)) mark(p.seat, lead);
+  };
+  for (const tr of g.tricks) scan(tr.plays);
+  scan(g.trickPlays);
+  return out;
+}
+
+// 我在该边花色的赢牌会不会被对头用主砸掉:对头断了这门、且没断主、场上还有主
+function ruffRisk(g, seat, group) {
+  if (group === 'TRUMP') return false;
+  if (othersTrumps(g, seat) <= 0) return false;
+  const voids = voidGroups(g);
+  for (let o = 0; o < g.players; o++) {
+    if (o === seat) continue;
+    if ((seat === g.declarer) === (o === g.declarer)) continue; // 只怕对头,不怕队友
+    const v = voids.get(o);
+    if (v && v.has(group) && !v.has('TRUMP')) return true;
+  }
+  return false;
+}
+
+// 对手手里(约)还剩多少主。底牌里的主看不见 → 宁可高估,多拉一轮
+function othersTrumps(g, seat) {
+  const t = g.trumpSuit;
+  let total = 42; // 4王 + 8张3 + 8张2 + 主花色4..A共22张
+  for (const c of seenCards(g)) if (isTrump(c, t)) total--;
+  for (const c of g.hands[seat]) if (isTrump(c, t)) total--;
+  return total;
+}
+
+// ---- 喊分 ----
+// bidTarget 以"坐庄实力"评估手牌 → 我最多敢喊到多少
+// 考量:王/常主(硬控制)、最长花色(主的长度)、对子(结构)、短门(可扣底做空门去杀)
 function bidTarget(hand) {
   let jok = 0, threes = 0, twos = 0; const sc = { S: 0, H: 0, D: 0, C: 0 };
   for (const c of hand) {
     if (c.suit === 'JOKER') jok++;
     else { if (c.rank === 3) threes++; else if (c.rank === 2) twos++; sc[c.suit]++; }
   }
-  const best = Math.max(sc.S, sc.H, sc.D, sc.C);
-  const str = jok * 1.5 + threes * 1.2 + twos * 1.0 + best * 0.4;
-  // 烂牌返回 <100(弃喊),只有够强的手牌才往上喊;上限 200
-  return Math.min(200, 100 + 10 * Math.round(str - 13));
+  const bestSuit = SUITS.reduce((b, s) => sc[s] > sc[b] ? s : b, 'S');
+  const shorts = SUITS.filter(s => s !== bestSuit && sc[s] <= 1).length; // 空门潜力
+  const str = jok * 1.6 + threes * 1.3 + twos * 1.0 +
+    sc[bestSuit] * 0.5 + pairCount(hand) * 0.3 + shorts * 0.8;
+  // 烂牌返回 <100(弃喊);实力越强目标越高,上限 200
+  return Math.min(200, 100 + 10 * Math.round(str - 15));
 }
+
+// 返回喊分数;null = 不喊。实力大幅超过当前价 → 跳喊施压,吓退还想跟的人
 export function aiBid(g, seat) {
   const lv = g.nextBidLevel();
-  return bidTarget(g.hands[seat]) >= lv ? lv : null;   // 愿意就加最小一档,否则放弃
+  const target = bidTarget(g.hands[seat]);
+  if (target < lv) return null;
+  if (target >= lv + 30) return Math.min(lv + 20, 200); // 跳两档:抬高对方跟价成本
+  return lv;
 }
 
 // ---- 亮主:选最长花色当主 ----
@@ -97,11 +167,14 @@ export function aiTrump(g, seat) {
   return ['S', 'H', 'D', 'C'].reduce((b, s) => sc[s] > sc[b] ? s : b, 'S');
 }
 
-// ---- 扣底:扣最没用的(非主、非分、低点)----
+// ---- 扣底:扣最没用的;5/10 打不赢就藏进底牌护分,A/K 留着打 ----
 function discardScore(c, t) {
   let s = 0;
   if (isTrump(c, t)) s += 1000;
-  if (pointValue(c)) s += 500;
+  if (c.rank === 13) s += 800;       // K:分牌 + 大牌,尽量留着打
+  else if (c.rank === 14) s += 500;  // A:boss,别扣
+  else if (c.rank === 10) s -= 10;   // 10/5:藏进底牌护分(闲家抢不到)
+  else if (c.rank === 5) s -= 40;
   s += cardGroup(c, t) === 'TRUMP' ? 0 : c.rank;
   return s;
 }
@@ -114,7 +187,8 @@ export function aiBury(g, seat) {
     .sort((a, b) => bySuit[a].length - bySuit[b].length);
   for (const s of suits) {
     const grp = bySuit[s];
-    if (grp.length <= need - discards.length && !grp.some(pointValue)) discards.push(...grp);
+    // A/K 留着打;5/10 随短门扣掉反而是藏分
+    if (grp.length <= need - discards.length && !grp.some(c => c.rank >= 13)) discards.push(...grp);
   }
   // 2) 剩余名额:扣最没用的(非主、非分、低点)
   if (discards.length < need) {
@@ -127,14 +201,99 @@ export function aiBury(g, seat) {
   return discards.slice(0, need);
 }
 
-// ---- 首攻 ----
+// ---- 首攻:拖拉机 > 庄家控主 > boss 对子 > boss 单张 > 小牌过渡 ----
+// boss 兑现会避开"对头已断门、可能用主砸"的花色;拖拉机结构免疫(压它需要同长主拖拉机)不用避
 export function aiLead(g, seat) {
-  const t = g.trumpSuit, hand = g.hands[seat], isZhuang = seat === g.declarer;
-  const side = sideOf(hand, t), trumps = trumpOf(hand, t);
-  if (isZhuang && trumps.length >= 5) return [descS(trumps, t)[0]];      // 庄家拉主(主多时连甩大主)
-  const bosses = side.filter(c => unseenHigher(c, seenCards(g), hand, t) === 0); // 当前最大的边牌
-  if (bosses.length) return [descS(bosses, t)[0]];                       // 兑现 boss:稳赢一墩
-  return [(side.length ? ascS(side, t) : ascS(hand, t))[0]];            // 无 boss → 出小牌,别白送大牌
+  const t = g.trumpSuit, hand = g.hands[seat];
+  const seen = seenCards(g);
+  const risky = group => ruffRisk(g, seat, group);
+  const run = leadTractor(hand, t, seen);
+  if (run) return run; // 拖拉机几乎无解,还能一手甩掉多张
+  if (seat === g.declarer) {
+    const draw = leadDrawTrump(g, seat, seen);
+    if (draw) return draw;
+  }
+  return leadBossPair(hand, t, seen, risky)
+    || leadBossSingle(hand, t, seen, risky)
+    || smallLead(hand, t);
+}
+
+// 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)
+function leadTractor(hand, t, seen) {
+  const pairs = pairList(hand);
+  if (pairs.length < 2) return null;
+  for (let k = pairs.length; k >= 3; k--) {
+    const run = findLadderRun(pairs, k, t);
+    if (run) return run.flat();
+  }
+  let minTop = -Infinity;
+  for (;;) {
+    const run = findLadderRun(pairs, 2, t, minTop);
+    if (!run) return null;
+    const top = runTopCard(run, t);
+    if (unseenHigherPair(top, seen, hand, t) === 0) return run.flat();
+    minTop = strength(top, t); // 这条顶张不硬,往更高的找
+  }
+}
+
+function runTopCard(run, t) {
+  return run.reduce((top, p) => strength(p[0], t) > strength(top, t) ? p[0] : top, run[0][0]);
+}
+
+// 庄家控主:对手还有不少主时,有 boss 就边赢边拉;主够长没 boss 就用小主换大主
+function leadDrawTrump(g, seat, seen) {
+  const t = g.trumpSuit, hand = g.hands[seat];
+  const trumps = trumpOf(hand, t);
+  if (!trumps.length || othersTrumps(g, seat) < 3) return null; // 对手主差不多光了,别再浪费
+  const top = descS(trumps, t)[0];
+  if (unseenHigher(top, seen, hand, t) === 0) return [top];
+  if (trumps.length >= 6) {
+    const small = ascS(trumps, t).find(c => !pointValue(c));
+    if (small) return [small];
+  }
+  return null;
+}
+
+// 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20);避开会被主对砸的花色
+function leadBossPair(hand, t, seen, risky) {
+  let best = null, bestScore = -Infinity;
+  for (const p of pairList(hand)) {
+    const c = p[0];
+    if (unseenHigherPair(c, seen, hand, t) > 0) continue;
+    const grp = cardGroup(c, t);
+    if (grp !== 'TRUMP' && risky(grp)) continue;
+    const score = pointValue(c) * 20 + strength(c, t);
+    if (score > bestScore) { best = p; bestScore = score; }
+  }
+  return best;
+}
+
+// 边花色里"当前最大"的落单牌 → 兑现,优先带分的;不拆对子;避开会被砸的花色
+function leadBossSingle(hand, t, seen, risky) {
+  let best = null, bestScore = -Infinity;
+  for (const [, arr] of groupByKey(hand)) {
+    if (arr.length !== 1) continue;
+    const c = arr[0];
+    if (cardGroup(c, t) === 'TRUMP') continue; // 主 boss 由庄家控主逻辑处理;闲家拉主反帮庄
+    if (unseenHigher(c, seen, hand, t) > 0 || risky(c.suit)) continue;
+    const score = pointValue(c) * 20 + strength(c, t);
+    if (score > bestScore) { best = c; bestScore = score; }
+  }
+  return best ? [best] : null;
+}
+
+// 过渡:最小的不带分边单张 → 最小不带分边牌 → 最小边牌 → 最小不带分牌 → 最小牌
+function smallLead(hand, t) {
+  const side = sideOf(hand, t);
+  if (side.length) {
+    const singles = singleList(side).filter(c => !pointValue(c));
+    if (singles.length) return [ascS(singles, t)[0]];
+    const nonPoint = side.filter(c => !pointValue(c));
+    if (nonPoint.length) return [ascS(nonPoint, t)[0]];
+    return [ascS(side, t)[0]];
+  }
+  const pool = hand.filter(c => !pointValue(c));
+  return [ascS(pool.length ? pool : hand, t)[0]];
 }
 
 // ---- 跟牌:构造一手合法“垫牌”(默认丢最小)----
@@ -236,6 +395,12 @@ export function aiFollow(g, seat) {
   if (win) {
     if (isZhuang) wantWin = !winnerIsZhuang && (points > 0 || isLast);   // 庄家:封锁闲家的分墩
     else wantWin = winnerIsZhuang && (points > 0 || isLast);             // 闲家:只抢庄家的墩,不抢队友
+    // 白捡节奏:对头正赢着,而我能用"反正当前最大"的同组单张吃 → 无分也抢(赢下一手首攻权)
+    if (!wantWin && lead.type === 'single' && win.length === 1) {
+      const enemyWinning = winnerIsZhuang !== isZhuang;
+      if (enemyWinning && cardGroup(win[0], t) === lead.group &&
+          unseenHigher(win[0], seenCards(g), hand, t) === 0) wantWin = true;
+    }
   }
   if (wantWin && isLegalFollow(hand, lead, win, t)) return win;
 

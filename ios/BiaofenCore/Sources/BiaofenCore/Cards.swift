@@ -125,9 +125,23 @@ public func deal(_ cards: [Card], players: Int) -> DealResult {
     return DealResult(hands: hands, kitty: Array(cards[i...]), kittySize: kittySize, perHand: perHand)
 }
 
+/// 边花色展示顺序:按主花色动态排列,保证相邻花色黑红交错(不易看错)
+public func sideSuitOrder(_ trumpSuit: String) -> [String] {
+    switch trumpSuit {
+    case "S": return ["H", "C", "D"] // 红黑红
+    case "C": return ["H", "S", "D"] // 红黑红
+    case "H": return ["S", "D", "C"] // 黑红黑
+    case "D": return ["S", "H", "C"] // 黑红黑
+    default: return ["S", "H", "C", "D"] // 未亮主:黑红黑红
+    }
+}
+
 /// 整理手牌(展示用):主牌在前,组内从大到小;相同的牌相邻(对子不被拆)
 public func sortHand(_ hand: [Card], _ trumpSuit: String) -> [Card] {
-    let groupOrder = ["TRUMP": 0, "S": 1, "H": 2, "D": 3, "C": 4]
+    var groupOrder = ["TRUMP": 0]
+    for (i, s) in sideSuitOrder(trumpSuit).enumerated() {
+        groupOrder[s] = i + 1
+    }
     let suitOrder = ["S": 0, "H": 1, "D": 2, "C": 3, "JOKER": 4]
     return hand.stableSorted { a, b in
         let ga = groupOrder[cardGroup(a, trumpSuit)] ?? 9

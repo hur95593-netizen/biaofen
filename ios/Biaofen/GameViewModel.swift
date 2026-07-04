@@ -112,13 +112,16 @@ final class GameViewModel: TableVM {
                 if e.bidTurn == humanSeat && !autopilot { return }
                 try? await Task.sleep(for: .milliseconds(600))
                 if Task.isCancelled { return }
-                try? e.placeBid(seat: e.bidTurn, amount: aiBid(e, e.bidTurn))
+                let amt = aiBid(e, e.bidTurn)
+                try? e.placeBid(seat: e.bidTurn, amount: amt)
+                if amt > 0 { SoundPlayer.shared.play("bid") }
                 refresh()
             case .declare:
                 if e.declarer == humanSeat && !autopilot { return }
                 try? await Task.sleep(for: .milliseconds(700))
                 if Task.isCancelled { return }
                 try? e.declareTrump(aiTrump(e, e.declarer))
+                SoundPlayer.shared.play("trump")
                 refresh()
             case .kitty:
                 if e.declarer == humanSeat && !autopilot { return }
@@ -134,6 +137,7 @@ final class GameViewModel: TableVM {
                 let cards = e.isLeadTurn ? aiLead(e, seat) : aiFollow(e, seat)
                 let before = e.tricks.count
                 try? e.playCards(seat: seat, cards: cards)
+                SoundPlayer.shared.play("play")
                 refresh()
                 await pauseIfTrickDone(before)
             case .idle, .done:
@@ -145,6 +149,11 @@ final class GameViewModel: TableVM {
     /// 一墩刚打完 → 把整墩摆出来停一拍再收走
     private func pauseIfTrickDone(_ tricksBefore: Int) async {
         guard let e = engine, e.tricks.count > tricksBefore, let last = e.tricks.last else { return }
+        SoundPlayer.shared.play("trick")
+        if let r = e.result {
+            SoundPlayer.shared.play(r.deltas[humanSeat] > 0 ? "win" : (r.deltas[humanSeat] < 0 ? "lose" : "trick"))
+            SoundPlayer.shared.haptic(.medium)
+        }
         displayTrick = last
         try? await Task.sleep(for: .milliseconds(1250))
         displayTrick = nil
@@ -156,6 +165,7 @@ final class GameViewModel: TableVM {
     func humanBid(_ amount: Int) {
         guard let e = engine, e.phase == .bidding, e.bidTurn == humanSeat else { return }
         try? e.placeBid(seat: humanSeat, amount: amount)
+        if amount > 0 { SoundPlayer.shared.play("bid") }
         refresh()
         driveAI()
     }
@@ -163,6 +173,7 @@ final class GameViewModel: TableVM {
     func humanDeclare(_ suit: String) {
         guard let e = engine, e.phase == .declare, e.declarer == humanSeat else { return }
         try? e.declareTrump(suit)
+        SoundPlayer.shared.play("trump")
         refresh()
         driveAI()
     }
@@ -183,6 +194,8 @@ final class GameViewModel: TableVM {
         guard e.validatePlay(seat: humanSeat, cards: cards) else { return }
         let before = e.tricks.count
         try? e.playCards(seat: humanSeat, cards: cards)
+        SoundPlayer.shared.play("play")
+        SoundPlayer.shared.haptic(.medium)
         selected = []
         refresh()
         aiTask?.cancel()
@@ -205,6 +218,8 @@ final class GameViewModel: TableVM {
         } else {
             selected.insert(card.id)
         }
+        SoundPlayer.shared.play("select")
+        SoundPlayer.shared.haptic(.light)
     }
 
     // MARK: - 界面辅助
