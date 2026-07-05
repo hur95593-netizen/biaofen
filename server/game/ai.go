@@ -6,6 +6,12 @@ import (
 	"sort"
 )
 
+// ---- 策略实验开关(ab_test.go 用来做新旧对战;正式行为 = 全 true)----
+var (
+	aiV4Zhuang = true // 庄家:对子/拖拉机拉主(榨「跟大」)+ 对手断主即停
+	aiV4Xian   = true // 闲家:借队友断门甩分牌 + 队友 boss 提前喂分
+)
+
 func ascS(cards []Card, t string) []Card {
 	a := append([]Card(nil), cards...)
 	sort.SliceStable(a, func(i, j int) bool { return Strength(a[i], t) < Strength(a[j], t) })
@@ -477,6 +483,9 @@ func AiLead(g *Game, seat int) []Card {
 	if c := leadBossSingle(hand, t, seen, risky); c != nil {
 		return c
 	}
+	if pr := leadPartnerRuff(g, seat, seen); pr != nil {
+		return pr // 借刀杀人:甩分牌给队友的断门
+	}
 	return smallLead(hand, t)
 }
 
@@ -539,19 +548,71 @@ func runTopCard(run [][]Card, t string) Card {
 	return top
 }
 
-// 庄家控主:对手还有不少主时,有 boss 就边赢边拉;主够长没 boss 就用小主换大主
+// 庄家控主。v4 核心:利用「跟大」规则 —— 跟主对子/拖拉机时没结构的人被迫交出
+// 最大的单主(含大王!),所以拉主优先出 拖拉机 > 对子(哪怕小对)> boss 单张;
+// 绝不再用小单主送墩(v3 的毛病:白丢一墩还被垫分)。
 func leadDrawTrump(g *Game, seat int, seen []Card) []Card {
 	t := g.TrumpSuit
 	hand := g.Hands[seat]
 	trumps := trumpOf(hand, t)
-	if len(trumps) == 0 || othersTrumps(g, seat) < 3 {
-		return nil // 对手主差不多光了,别再浪费
+	if len(trumps) == 0 {
+		return nil
 	}
+	if !aiV4Zhuang {
+		// v3 行为(A/B 基线):boss 边赢边拉;主长无 boss 用小主换大主
+		if othersTrumps(g, seat) < 3 {
+			return nil
+		}
+		top := descS(trumps, t)[0]
+		if unseenHigher(top, seen, hand, t) == 0 {
+			return []Card{top}
+		}
+		if len(trumps) >= 6 {
+			for _, c := range ascS(trumps, t) {
+				if PointValue(c) == 0 {
+					return []Card{c}
+				}
+			}
+		}
+		return nil
+	}
+	if enemiesAllTrumpVoid(g, seat) || othersTrumps(g, seat) < 3 {
+		return nil // 对手主已尽,立刻停手转攻
+	}
+	pairs := pairList(trumps)
+	// 1) boss 主对:必赢 + 跟大逼对手交出最大的单主(大王也逃不掉),一墩拉走 6 张
+	var bossPair []Card
+	for _, p := range pairs {
+		if unseenHigherPair(p[0], seen, hand, t) > 0 {
+			continue
+		}
+		if bossPair == nil || Strength(p[0], t) < Strength(bossPair[0], t) {
+			bossPair = p // 最小的 boss 对就够赢,大的留后手
+		}
+	}
+	if bossPair != nil {
+		return bossPair
+	}
+	// 2) boss 单张:必赢,拉走 3 张
 	top := descS(trumps, t)[0]
 	if unseenHigher(top, seen, hand, t) == 0 {
 		return []Card{top}
 	}
+	// 3) 无必赢结构但主够长:便宜快拉(A/B 实测:3 人局快速消耗对手的主 > 保守惜牌)。
+	//    优先小对(一墩换对手 4 张),没有对再用小单
 	if len(trumps) >= 6 {
+		var lowPair []Card
+		for _, p := range pairs {
+			if PointValue(p[0]) > 0 {
+				continue
+			}
+			if lowPair == nil || Strength(p[0], t) < Strength(lowPair[0], t) {
+				lowPair = p
+			}
+		}
+		if lowPair != nil {
+			return lowPair
+		}
 		for _, c := range ascS(trumps, t) {
 			if PointValue(c) == 0 {
 				return []Card{c}
@@ -559,6 +620,64 @@ func leadDrawTrump(g *Game, seat int, seen []Card) []Card {
 		}
 	}
 	return nil
+}
+
+// 所有对头都已亮出断主(跟主牌时垫过别的)→ 主拉干净了
+func enemiesAllTrumpVoid(g *Game, seat int) bool {
+	voids := voidGroups(g)
+	for o := 0; o < g.Players; o++ {
+		if o == seat {
+			continue
+		}
+		if (seat == g.Declarer) == (o == g.Declarer) {
+			continue
+		}
+		if !voids[o]["TRUMP"] {
+			return false
+		}
+	}
+	return true
+}
+
+// 借刀杀人(闲家、且庄家紧跟我后手时):队友断了某边门且还可能有主、庄家没断这门 →
+// 故意甩一张分牌过去:庄被迫跟牌,队友最后用主杀,分数全归闲家。
+func leadPartnerRuff(g *Game, seat int, seen []Card) []Card {
+	if !aiV4Xian || seat == g.Declarer {
+		return nil
+	}
+	if (seat+1)%g.Players != g.Declarer {
+		return nil // 需要出牌顺序 = 我 → 庄 → 队友(队友最后落牌才能稳杀)
+	}
+	t := g.TrumpSuit
+	hand := g.Hands[seat]
+	voids := voidGroups(g)
+	var best Card
+	bestScore := 0
+	for _, c := range hand {
+		grp := CardGroup(c, t)
+		if grp == "TRUMP" || PointValue(c) == 0 {
+			continue
+		}
+		partnerCanRuff := false
+		for o := 0; o < g.Players; o++ {
+			if o == seat || o == g.Declarer {
+				continue
+			}
+			if voids[o][grp] && !voids[o]["TRUMP"] {
+				partnerCanRuff = true
+			}
+		}
+		if !partnerCanRuff || voids[g.Declarer][grp] {
+			continue // 队友杀不了,或庄自己也断门(会反杀)
+		}
+		if score := PointValue(c)*10 + c.Rank; score > bestScore {
+			best, bestScore = c, score
+		}
+	}
+	if bestScore == 0 {
+		return nil
+	}
+	return []Card{best}
 }
 
 // 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20);避开会被主对砸的花色
@@ -764,6 +883,55 @@ func chooseDump(hand []Card, lead *Combo, t string, feed bool) []Card {
 	return BuildFollow(hand, lead, t) // 拖拉机较少见,退回最小垫
 }
 
+// 当前最大的一手是否为「队友打出的边花色必大牌」且庄家大概率只能跟着垫:
+// 顶张组内当前最大 + 庄没亮过这门断门 + 庄曾跟过这门(证实有牌)→ 这墩基本归队友
+func teammateBossSecured(g *Game, bi int, myHand []Card) bool {
+	best := g.TrickPlays[bi]
+	if best.Combo == nil || best.Combo.Group == "TRUMP" {
+		return false
+	}
+	t := g.TrumpSuit
+	top := best.Cards[0]
+	for _, c := range best.Cards {
+		if Strength(c, t) > Strength(top, t) {
+			top = c
+		}
+	}
+	if unseenHigher(top, seenCards(g), myHand, t) > 0 {
+		return false
+	}
+	voids := voidGroups(g)
+	if voids[g.Declarer][best.Combo.Group] {
+		return false // 庄断门 → 可能用主杀,别喂
+	}
+	return provenFollows(g, g.Declarer, best.Combo.Group)
+}
+
+// seat 是否曾整手跟上过该组(证实他有这门牌)
+func provenFollows(g *Game, seat int, group string) bool {
+	for _, tr := range g.Tricks {
+		if len(tr.Plays) == 0 || tr.Plays[0].Combo == nil || tr.Plays[0].Combo.Group != group {
+			continue
+		}
+		for _, p := range tr.Plays {
+			if p.Seat != seat {
+				continue
+			}
+			all := true
+			for _, c := range p.Cards {
+				if CardGroup(c, g.TrumpSuit) != group {
+					all = false
+					break
+				}
+			}
+			if all {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // 在 cardsG 里找压过 minTop 的、同型同长的最小组合;没有返回 nil
 func findBeatingInGroup(cardsG []Card, lead *Combo, minTop int, t string) []Card {
 	if lead.Type == "throw" {
@@ -888,6 +1056,10 @@ func AiFollow(g *Game, seat int) []Card {
 		}
 	}
 	feed := !isZhuang && !winnerIsZhuang && zhuangPlayed
+	// v4 闲家:队友领着「边花色必大牌」、庄被证实还有这门(跟过且没断)→ 不等庄出牌就喂分
+	if aiV4Xian && !feed && !isZhuang && !winnerIsZhuang && !zhuangPlayed {
+		feed = teammateBossSecured(g, bi, hand)
+	}
 	play := chooseDump(hand, lead, t, feed)
 	if IsLegalFollow(hand, lead, play, t) {
 		return play

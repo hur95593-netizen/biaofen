@@ -217,6 +217,7 @@ export function aiLead(g, seat) {
   }
   return leadBossPair(hand, t, seen, risky)
     || leadBossSingle(hand, t, seen, risky)
+    || leadPartnerRuff(g, seat, seen) // 借刀杀人:甩分牌给队友的断门
     || smallLead(hand, t);
 }
 
@@ -250,18 +251,102 @@ function runTopCard(run, t) {
   return run.reduce((top, p) => strength(p[0], t) > strength(top, t) ? p[0] : top, run[0][0]);
 }
 
-// 庄家控主:对手还有不少主时,有 boss 就边赢边拉;主够长没 boss 就用小主换大主
+// 庄家控主(v4,经 3 人局 A/B 对战调优):
+// boss 主对(必赢 + 跟大逼对手交最大单主)> boss 单张 > 便宜快拉(小对 > 小单);
+// 对手全部断主即停。排序依据实测:必赢的先赢着拉,无必赢结构时快速消耗对手的主仍是净赚。
 function leadDrawTrump(g, seat, seen) {
   const t = g.trumpSuit, hand = g.hands[seat];
   const trumps = trumpOf(hand, t);
-  if (!trumps.length || othersTrumps(g, seat) < 3) return null; // 对手主差不多光了,别再浪费
+  if (!trumps.length) return null;
+  if (enemiesAllTrumpVoid(g, seat) || othersTrumps(g, seat) < 3) return null; // 对手主已尽,停手转攻
+  const pairs = pairList(trumps);
+  // 1) boss 主对:必赢 + 一墩拉走 6 张,跟大还能逼出对手的大王/主3
+  let bossPair = null;
+  for (const p of pairs) {
+    if (unseenHigherPair(p[0], seen, hand, t) > 0) continue;
+    if (!bossPair || strength(p[0], t) < strength(bossPair[0], t)) bossPair = p; // 最小的 boss 对就够赢
+  }
+  if (bossPair) return bossPair;
+  // 2) boss 单张:必赢,拉走 3 张
   const top = descS(trumps, t)[0];
   if (unseenHigher(top, seen, hand, t) === 0) return [top];
+  // 3) 无必赢结构但主够长:便宜快拉,优先小对
   if (trumps.length >= 6) {
+    let lowPair = null;
+    for (const p of pairs) {
+      if (pointValue(p[0])) continue;
+      if (!lowPair || strength(p[0], t) < strength(lowPair[0], t)) lowPair = p;
+    }
+    if (lowPair) return lowPair;
     const small = ascS(trumps, t).find(c => !pointValue(c));
     if (small) return [small];
   }
   return null;
+}
+
+// 所有对头都已亮出断主(跟主牌时垫过别的)→ 主拉干净了
+function enemiesAllTrumpVoid(g, seat) {
+  const voids = voidGroups(g);
+  for (let o = 0; o < g.players; o++) {
+    if (o === seat) continue;
+    if ((seat === g.declarer) === (o === g.declarer)) continue;
+    const v = voids.get(o);
+    if (!v || !v.has('TRUMP')) return false;
+  }
+  return true;
+}
+
+// 借刀杀人(闲家、且庄家紧跟我后手时):队友断了某边门且还可能有主、庄家没断这门 →
+// 故意甩一张分牌过去:庄被迫跟牌,队友最后用主杀,分数全归闲家。
+function leadPartnerRuff(g, seat, seen) {
+  if (seat === g.declarer) return null;
+  if ((seat + 1) % g.players !== g.declarer) return null; // 需要 我 → 庄 → 队友 的顺序
+  const t = g.trumpSuit, hand = g.hands[seat];
+  const voids = voidGroups(g);
+  let best = null, bestScore = 0;
+  for (const c of hand) {
+    const grp = cardGroup(c, t);
+    if (grp === 'TRUMP' || !pointValue(c)) continue;
+    let partnerCanRuff = false;
+    for (let o = 0; o < g.players; o++) {
+      if (o === seat || o === g.declarer) continue;
+      const v = voids.get(o);
+      if (v && v.has(grp) && !v.has('TRUMP')) partnerCanRuff = true;
+    }
+    if (!partnerCanRuff) continue;
+    const dv = voids.get(g.declarer);
+    if (dv && dv.has(grp)) continue; // 庄自己断门会反杀
+    const score = pointValue(c) * 10 + c.rank;
+    if (score > bestScore) { best = c; bestScore = score; }
+  }
+  return best ? [best] : null;
+}
+
+// 当前最大的一手是否为「队友打出的边花色必大牌」且庄家大概率只能跟着垫:
+// 顶张组内当前最大 + 庄没亮过这门断门 + 庄曾跟过这门(证实有牌)→ 这墩基本归队友
+function teammateBossSecured(g, bi, myHand) {
+  const best = g.trickPlays[bi];
+  if (!best.combo || best.combo.group === 'TRUMP') return false;
+  const t = g.trumpSuit;
+  let top = best.cards[0];
+  for (const c of best.cards) if (strength(c, t) > strength(top, t)) top = c;
+  if (unseenHigher(top, seenCards(g), myHand, t) > 0) return false;
+  const voids = voidGroups(g);
+  const dv = voids.get(g.declarer);
+  if (dv && dv.has(best.combo.group)) return false; // 庄断门 → 可能用主杀
+  return provenFollows(g, g.declarer, best.combo.group);
+}
+
+// seat 是否曾整手跟上过该组(证实他有这门牌)
+function provenFollows(g, seat, group) {
+  for (const tr of g.tricks) {
+    if (!tr.plays.length || !tr.plays[0].combo || tr.plays[0].combo.group !== group) continue;
+    for (const p of tr.plays) {
+      if (p.seat !== seat) continue;
+      if (p.cards.every(c => cardGroup(c, g.trumpSuit) === group)) return true;
+    }
+  }
+  return false;
 }
 
 // 已无更高对的对子 → 兑现;优先带分的(闲家一手捡 20);避开会被主对砸的花色
@@ -419,7 +504,11 @@ export function aiFollow(g, seat) {
 
   // 不抢 → 智能垫牌:队友(闲家)赢、且庄家已出牌(吃不动了)才喂分;否则躲分(不送分给庄家)
   const zhuangPlayed = g.trickPlays.some(p => p.seat === g.declarer);
-  const feed = !isZhuang && !winnerIsZhuang && zhuangPlayed;
+  let feed = !isZhuang && !winnerIsZhuang && zhuangPlayed;
+  // v4 闲家:队友领着「边花色必大牌」、庄被证实还有这门(跟过且没断)→ 不等庄出牌就喂分
+  if (!feed && !isZhuang && !winnerIsZhuang && !zhuangPlayed) {
+    feed = teammateBossSecured(g, bi, hand);
+  }
   const play = chooseDump(hand, lead, t, feed);
   return isLegalFollow(hand, lead, play, t) ? play : buildFollow(hand, lead, t);
 }
