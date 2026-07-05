@@ -23,6 +23,9 @@ struct ContentView: View {
                     },
                     onOnline: { screen = .online }
                 )
+                .overlay(alignment: .topTrailing) {
+                    MenuSoundToggles().padding(14)
+                }
             case .single:
                 TableView(vm: gameVM)
             case .online:
@@ -32,10 +35,10 @@ struct ContentView: View {
         .onChange(of: gameVM.inGame) { _, inGame in
             if !inGame && screen == .single { screen = .menu }
         }
-        .onChange(of: screen) { _, s in
-            SoundPlayer.shared.setInGame(s != .menu) // BGM 只在局内播放
+        .onAppear {
+            SoundPlayer.shared.startMusic() // 主菜单起就有 BGM
+            handleLaunchArgs()
         }
-        .onAppear(perform: handleLaunchArgs)
     }
 
     /// 调试/演示用启动参数:--autopilot 人类座位由 AI 代打;--auto3/--auto4 直接开单机局;
@@ -56,6 +59,34 @@ struct ContentView: View {
             }
             screen = .online
             onlineVM.startDemo(server: server)
+        }
+    }
+}
+
+/// 主菜单右上角的音乐/音效开关
+struct MenuSoundToggles: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                SoundPlayer.shared.musicOn.toggle()
+            } label: {
+                Image(systemName: "music.note")
+                    .font(.system(size: 15))
+                    .foregroundStyle(SoundPlayer.shared.musicOn ? .yellow : .white.opacity(0.4))
+                    .padding(8)
+                    .background(Circle().fill(.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
+            Button {
+                SoundPlayer.shared.muted.toggle()
+            } label: {
+                Image(systemName: SoundPlayer.shared.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .padding(8)
+                    .background(Circle().fill(.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
         }
     }
 }

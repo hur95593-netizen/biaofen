@@ -39,6 +39,8 @@ final class GameViewModel: TableVM {
     var trickPlays: [Play] = []
     var result: HandResult?
     var kittyIDs: Set<String> = []
+    var buriedCards: [Card] = []
+    private var holdResult = false // 最后一墩先亮牌,结算面板延后弹出
 
     // ---- 纯界面状态 ----
     var selected: Set<String> = []
@@ -69,6 +71,7 @@ final class GameViewModel: TableVM {
         guard let e = engine else { return }
         selected = []
         displayTrick = nil
+        holdResult = false
         e.startHand()
         SoundPlayer.shared.play("deal")
         refresh()
@@ -94,7 +97,8 @@ final class GameViewModel: TableVM {
         xianPoints = e.xianPoints
         scores = e.scores
         trickPlays = e.trickPlays
-        result = e.result
+        result = holdResult ? nil : e.result
+        buriedCards = e.phase == .done ? e.buried : []
         kittyIDs = (e.phase == .kitty && e.declarer == humanSeat) ? Set(e.kitty.map(\.id)) : []
         // 轮到你出牌:提示音(开局发牌等非交互刷新不响)
         let mine = e.phase == .play && e.turn == humanSeat
@@ -149,6 +153,7 @@ final class GameViewModel: TableVM {
                 let before = e.tricks.count
                 displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
                 try? e.playCards(seat: seat, cards: cards)
+                if e.result != nil { holdResult = true } // 终局:先亮最后一墩再弹结算
                 SoundPlayer.shared.play("play")
                 refresh()
                 await pauseIfTrickDone(before)
@@ -158,16 +163,20 @@ final class GameViewModel: TableVM {
         }
     }
 
-    /// 一墩刚打完 → 整墩留在桌上(带赢家标记),下一圈有人出牌时才清掉;这里只停一拍控制节奏
+    /// 一墩刚打完 → 整墩留在桌上(带赢家标记),下一圈有人出牌时才清掉;这里只停一拍控制节奏。
+    /// 最后一墩:多亮一拍让人看清,然后才弹结算面板(面板里翻底牌)
     private func pauseIfTrickDone(_ tricksBefore: Int) async {
         guard let e = engine, e.tricks.count > tricksBefore, let last = e.tricks.last else { return }
         SoundPlayer.shared.play("trick")
-        if let r = e.result {
-            SoundPlayer.shared.play(r.deltas[humanSeat] > 0 ? "win" : (r.deltas[humanSeat] < 0 ? "lose" : "trick"))
-            SoundPlayer.shared.haptic(.medium)
-        }
         displayTrick = last
         try? await Task.sleep(for: .milliseconds(1100))
+        if holdResult, let r = e.result {
+            try? await Task.sleep(for: .milliseconds(1100))
+            holdResult = false
+            SoundPlayer.shared.play(r.deltas[humanSeat] > 0 ? "win" : (r.deltas[humanSeat] < 0 ? "lose" : "trick"))
+            SoundPlayer.shared.haptic(.medium)
+            refresh()
+        }
     }
 
     // MARK: - 人类操作
@@ -206,6 +215,7 @@ final class GameViewModel: TableVM {
         let before = e.tricks.count
         displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
         try? e.playCards(seat: humanSeat, cards: cards)
+        if e.result != nil { holdResult = true } // 终局:先亮最后一墩再弹结算
         SoundPlayer.shared.play("play")
         SoundPlayer.shared.haptic(.medium)
         selected = []

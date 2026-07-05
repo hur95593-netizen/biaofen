@@ -521,6 +521,22 @@ struct ResultOverlay<VM: TableVM>: View {
                     }
                 }
 
+                if !vm.buriedCards.isEmpty {
+                    let kittyPts = vm.buriedCards.reduce(0) { $0 + pointValue($1) }
+                    VStack(spacing: 5) {
+                        Text("底牌翻开(\(kittyPts) 分\(r.lastTrickBonus > 0 ? ",已被闲家翻走" : ",归庄家"))")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.75))
+                        HStack(spacing: -10) {
+                            ForEach(vm.buriedCards.sorted {
+                                (pointValue($0), $0.rank) > (pointValue($1), $1.rank)
+                            }) { c in
+                                CardFace(card: c, width: 34)
+                            }
+                        }
+                    }
+                }
+
                 VStack(spacing: 6) {
                     ForEach(0..<vm.players, id: \.self) { seat in
                         HStack {

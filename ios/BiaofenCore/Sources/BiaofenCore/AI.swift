@@ -695,6 +695,64 @@ public func buildWinningFollow(_ hand: [Card], _ lead: Combo, _ best: Combo, _ t
     return nil
 }
 
+// MARK: - 联机端提示(只依赖本视角可见信息:手牌 + 当前墩,不依赖完整历史)
+
+/// 首攻提示:没有记牌信息 → 按保守 boss 判定(把所有未在我手的牌都当作还在场上)
+public func suggestLead(hand: [Card], trump t: String) -> [Card] {
+    let seen: [Card] = []
+    let noRisk: (String) -> Bool = { _ in false }
+    if let run = leadTractor(hand, t, seen) {
+        return run
+    }
+    if let p = leadBossPair(hand, t, seen, noRisk) {
+        return p
+    }
+    if let c = leadBossSingle(hand, t, seen, noRisk) {
+        return c
+    }
+    return smallLead(hand, t)
+}
+
+/// 跟牌提示:抢分/封锁/喂分/躲分的核心决策(与单机 aiFollow 同套路,去掉需要全量历史的部分)
+public func suggestFollow(hand: [Card], plays: [Play], declarer: Int, mySeat: Int, players: Int, trump t: String) -> [Card] {
+    guard let lead = plays.first?.combo else { return [] }
+    var best = plays[0].combo
+    var bi = 0
+    for i in 1..<plays.count where beats(plays[i].combo, best) {
+        best = plays[i].combo
+        bi = i
+    }
+    let isZhuang = mySeat == declarer
+    let winnerIsZhuang = plays[bi].seat == declarer
+    var points = 0
+    for p in plays {
+        for c in p.cards {
+            points += pointValue(c)
+        }
+    }
+    let isLast = plays.count == players - 1
+
+    var win: [Card]?
+    if let best {
+        win = buildWinningFollow(hand, lead, best, t)
+    }
+    if win != nil {
+        let wantWin = isZhuang
+            ? (!winnerIsZhuang && (points > 0 || isLast))
+            : (winnerIsZhuang && (points > 0 || isLast))
+        if wantWin, let win, isLegalFollow(hand: hand, lead: lead, play: win, trumpSuit: t) {
+            return win
+        }
+    }
+    let zhuangPlayed = plays.contains { $0.seat == declarer }
+    let feed = !isZhuang && !winnerIsZhuang && zhuangPlayed
+    let play = chooseDump(hand, lead, t, feed)
+    if isLegalFollow(hand: hand, lead: lead, play: play, trumpSuit: t) {
+        return play
+    }
+    return buildFollow(hand, lead, t)
+}
+
 /// 跟牌决策
 public func aiFollow(_ g: Game, _ seat: Int) -> [Card] {
     let t = g.trumpSuit

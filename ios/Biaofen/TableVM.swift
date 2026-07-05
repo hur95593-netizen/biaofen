@@ -34,6 +34,7 @@ protocol TableVM: AnyObject, Observable {
     var toast: String? { get }     // 联机:事件/错误提示;单机 nil
     var canSelectCards: Bool { get }
     var kittyIDs: Set<String> { get } // 扣底阶段(自己坐庄):哪些是底牌 → 卡面标记
+    var buriedCards: [Card] { get }   // 结算时翻开的底牌(非 done 阶段为空)
 
     func playerName(_ seat: Int) -> String
     func relPosition(_ seat: Int) -> Int

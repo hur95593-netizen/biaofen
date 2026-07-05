@@ -73,11 +73,13 @@ final class OnlineViewModel: TableVM {
     var xianPoints: Int { state?.xianPoints ?? 0 }
     var scores: [Int] { state?.scores ?? Array(repeating: 0, count: players) }
     var trickPlays: [Play] { state?.trickPlays ?? [] }
-    var result: HandResult? { state?.result }
+    var result: HandResult? { resultHold ? nil : state?.result }
     var nextBidLevel: Int { state?.nextBidLevel ?? 100 }
-    var supportsHint: Bool { false } // 联机没有全量牌局信息,不提供提示
+    var supportsHint: Bool { true }
     var roomBadge: String? { roomCode.isEmpty ? nil : "房号 \(roomCode)" }
     var kittyIDs: Set<String> { Set(state?.kittyIds ?? []) }
+    var buriedCards: [Card] { state?.buried ?? [] }
+    private var resultHold = false // 最后一墩先亮牌,结算面板延后弹出
 
     var displayTrick: Trick?
     var selected: Set<String> = []
@@ -203,6 +205,7 @@ final class OnlineViewModel: TableVM {
         token = ""
         selected = []
         displayTrick = nil
+        resultHold = false
         prevTricksPlayed = 0
         stage = .setup
     }
@@ -231,7 +234,15 @@ final class OnlineViewModel: TableVM {
         selected = []
     }
 
-    func hint() {}
+    /// 联机提示:用本视角可见信息(手牌 + 当前墩)给建议;没有全量记牌,首攻按保守 boss 判定
+    func hint() {
+        guard phase == .play, turn == humanSeat else { return }
+        let cards = trickPlays.isEmpty
+            ? suggestLead(hand: myHand, trump: trumpSuit)
+            : suggestFollow(hand: myHand, plays: trickPlays, declarer: declarer,
+                            mySeat: humanSeat, players: players, trump: trumpSuit)
+        selected = Set(cards.map(\.id))
+    }
 
     func newHand() {
         socket?.send(OutMsg(type: "next"))
@@ -288,8 +299,19 @@ final class OnlineViewModel: TableVM {
         if (s.trickPlays?.count ?? 0) > prevPlays {
             SoundPlayer.shared.play("play")
         }
-        if state?.result == nil, let r = s.result, r.deltas.indices.contains(s.mySeat) {
-            SoundPlayer.shared.play(r.deltas[s.mySeat] > 0 ? "win" : (r.deltas[s.mySeat] < 0 ? "lose" : "trick"))
+        if state?.result == nil, s.result != nil {
+            // 终局:先把最后一墩亮 2 秒,再弹结算面板(面板里翻底牌)
+            resultHold = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2.0))
+                guard let self else { return }
+                self.resultHold = false
+                if let r = self.state?.result, r.deltas.indices.contains(self.humanSeat) {
+                    let d = r.deltas[self.humanSeat]
+                    SoundPlayer.shared.play(d > 0 ? "win" : (d < 0 ? "lose" : "trick"))
+                    SoundPlayer.shared.haptic(.medium)
+                }
+            }
         }
         let newTricks = s.tricksPlayed ?? 0
         if newTricks > prevTricksPlayed, (s.trickPlays ?? []).isEmpty, let last = s.lastTrick {
