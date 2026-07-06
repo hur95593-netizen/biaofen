@@ -19,44 +19,12 @@ final class SoundPlayer {
         }
     }
 
-    /// 出牌配音:女声(Tingting)/ 男声(Eddy)/ 关
-    enum VoiceMode: String {
-        case female = "f", male = "m", off = "off"
-    }
-
-    var voiceMode: VoiceMode {
-        didSet { UserDefaults.standard.set(voiceMode.rawValue, forKey: "sound.voice") }
-    }
-
-    var voiceLabel: String {
-        switch voiceMode {
-        case .female: return "女"
-        case .male: return "男"
-        case .off: return "静"
-        }
-    }
-
-    func cycleVoice() {
-        switch voiceMode {
-        case .female: voiceMode = .male
-        case .male: voiceMode = .off
-        case .off: voiceMode = .female
-        }
-    }
-
-    /// 播报出牌(key 如 s14 / p3 / tractor / throw)
-    func announce(_ key: String) {
-        guard voiceMode != .off else { return }
-        play("\(voiceMode.rawValue)_\(key)")
-    }
-
     private var players: [String: AVAudioPlayer] = [:]
     private var musicPlayer: AVAudioPlayer?
 
     private init() {
         muted = UserDefaults.standard.bool(forKey: "sound.muted")
         musicOn = UserDefaults.standard.object(forKey: "sound.musicOn") as? Bool ?? true
-        voiceMode = VoiceMode(rawValue: UserDefaults.standard.string(forKey: "sound.voice") ?? "f") ?? .female
         // playback:确保 BGM 可靠出声(ambient 在部分场景下会被系统静音)
         try? AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])
         try? AVAudioSession.sharedInstance().setActive(true)

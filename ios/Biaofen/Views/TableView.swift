@@ -135,18 +135,6 @@ struct TopBar<VM: TableVM>: View {
             }
 
             Button {
-                SoundPlayer.shared.cycleVoice() // 配音:女 → 男 → 关
-            } label: {
-                Text(SoundPlayer.shared.voiceLabel)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(SoundPlayer.shared.voiceMode == .off ? .white.opacity(0.4) : .yellow)
-                    .frame(width: 16, height: 16)
-                    .padding(5)
-                    .background(Circle().fill(.black.opacity(0.3)))
-            }
-            .buttonStyle(.plain)
-
-            Button {
                 SoundPlayer.shared.musicOn.toggle()
             } label: {
                 Image(systemName: "music.note")
