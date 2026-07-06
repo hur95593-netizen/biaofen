@@ -24,6 +24,12 @@ struct TableView<VM: TableVM>: View {
             TrickLayer(vm: vm)
                 .offset(y: -8)
 
+            if let fx = vm.playEffect {
+                EffectLayer(effect: fx)
+                    .id(fx.id)
+                    .allowsHitTesting(false)
+            }
+
             if let toast = vm.toast {
                 Text(toast)
                     .font(.system(size: 13, weight: .semibold))
@@ -127,6 +133,18 @@ struct TopBar<VM: TableVM>: View {
                     .background(Capsule().fill(.black.opacity(0.25)))
                     .lineLimit(1)
             }
+
+            Button {
+                SoundPlayer.shared.cycleVoice() // 配音:女 → 男 → 关
+            } label: {
+                Text(SoundPlayer.shared.voiceLabel)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(SoundPlayer.shared.voiceMode == .off ? .white.opacity(0.4) : .yellow)
+                    .frame(width: 16, height: 16)
+                    .padding(5)
+                    .background(Circle().fill(.black.opacity(0.3)))
+            }
+            .buttonStyle(.plain)
 
             Button {
                 SoundPlayer.shared.musicOn.toggle()
@@ -248,6 +266,70 @@ struct OpponentView<VM: TableVM>: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Capsule().fill(color.opacity(0.9)))
+    }
+}
+
+// MARK: - 牌型出场特效
+
+struct EffectLayer: View {
+    let effect: PlayEffect
+
+    var body: some View {
+        switch effect.kind {
+        case .tractor:
+            TractorFx()
+        case .throwCards:
+            ThrowFx()
+        }
+    }
+}
+
+/// 拖拉机:开过牌桌中央
+private struct TractorFx: View {
+    @State private var x: CGFloat = -320
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("拖拉机!")
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .foregroundStyle(.yellow)
+                .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
+            Text("🚜")
+                .font(.system(size: 44))
+                .scaleEffect(x: -1) // 车头朝右
+                .shadow(color: .black.opacity(0.4), radius: 3, y: 2)
+        }
+        .offset(x: x, y: -10)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5)) { x = 320 }
+        }
+    }
+}
+
+/// 甩牌:大字弹出
+private struct ThrowFx: View {
+    @State private var scale: CGFloat = 0.3
+    @State private var opacity: CGFloat = 0
+
+    var body: some View {
+        Text("甩牌!")
+            .font(.system(size: 40, weight: .black, design: .rounded))
+            .foregroundStyle(
+                LinearGradient(colors: [.yellow, .orange], startPoint: .top, endPoint: .bottom)
+            )
+            .shadow(color: .black.opacity(0.6), radius: 4, y: 2)
+            .scaleEffect(scale)
+            .opacity(opacity)
+            .offset(y: -14)
+            .onAppear {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
+                    scale = 1.15
+                    opacity = 1
+                }
+                withAnimation(.easeOut(duration: 0.4).delay(1.1)) {
+                    opacity = 0
+                }
+            }
     }
 }
 

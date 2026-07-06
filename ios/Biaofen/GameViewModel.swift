@@ -40,6 +40,7 @@ final class GameViewModel: TableVM {
     var result: HandResult?
     var kittyIDs: Set<String> = []
     var buriedCards: [Card] = []
+    var playEffect: PlayEffect?
     private var holdResult = false // 最后一墩先亮牌,结算面板延后弹出
 
     // ---- 纯界面状态 ----
@@ -149,12 +150,14 @@ final class GameViewModel: TableVM {
                 try? await Task.sleep(for: .milliseconds(650))
                 if Task.isCancelled { return }
                 let seat = e.turn
-                let cards = e.isLeadTurn ? aiLead(e, seat) : aiFollow(e, seat)
+                let wasLead = e.isLeadTurn
+                let cards = wasLead ? aiLead(e, seat) : aiFollow(e, seat)
                 let before = e.tricks.count
                 displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
                 try? e.playCards(seat: seat, cards: cards)
                 if e.result != nil { holdResult = true } // 终局:先亮最后一墩再弹结算
                 SoundPlayer.shared.play("play")
+                playFeedback(cards: cards, wasLead: wasLead, trump: e.trumpSuit)
                 refresh()
                 await pauseIfTrickDone(before)
             case .idle, .done:
@@ -213,11 +216,13 @@ final class GameViewModel: TableVM {
         let cards = myHand.filter { selected.contains($0.id) }
         guard e.validatePlay(seat: humanSeat, cards: cards) else { return }
         let before = e.tricks.count
+        let wasLead = e.isLeadTurn
         displayTrick = nil // 新一圈开始出牌 → 收走上一圈的展示
         try? e.playCards(seat: humanSeat, cards: cards)
         if e.result != nil { holdResult = true } // 终局:先亮最后一墩再弹结算
         SoundPlayer.shared.play("play")
         SoundPlayer.shared.haptic(.medium)
+        playFeedback(cards: cards, wasLead: wasLead, trump: e.trumpSuit)
         selected = []
         refresh()
         aiTask?.cancel()

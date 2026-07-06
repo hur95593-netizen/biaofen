@@ -3,8 +3,19 @@ import Foundation
 import Observation
 import BiaofenCore
 
+/// 牌型出场特效(拖拉机开过 / 甩牌字样)
+struct PlayEffect: Equatable {
+    enum Kind {
+        case tractor, throwCards
+    }
+
+    let id: UUID
+    let kind: Kind
+}
+
 @MainActor
 protocol TableVM: AnyObject, Observable {
+    var playEffect: PlayEffect? { get set }
     var humanSeat: Int { get }
     var players: Int { get }
     var phase: Phase { get }
@@ -49,4 +60,46 @@ protocol TableVM: AnyObject, Observable {
     func hint()
     func backToMenu()
     func newHand()
+}
+
+extension TableVM {
+    /// 出牌反馈:配音播报(单张报点、对子报"对X"、拖拉机、甩牌)+ 牌型出场特效。
+    /// 跟牌垫的散牌(不成型)不播报;首攻多张不成型 = 甩牌。
+    func playFeedback(cards: [Card], wasLead: Bool, trump: String) {
+        guard !cards.isEmpty else { return }
+        var key: String?
+        var effectKind: PlayEffect.Kind?
+        if let combo = detectCombo(cards, trump) {
+            switch combo.type {
+            case .single:
+                let c = cards[0]
+                key = c.isJoker ? (c.rank == BIG_JOKER ? "sbj" : "ssj") : "s\(c.rank)"
+            case .pair:
+                let c = cards[0]
+                key = c.isJoker ? (c.rank == BIG_JOKER ? "pbj" : "psj") : "p\(c.rank)"
+            case .tractor:
+                key = "tractor"
+                effectKind = .tractor
+            case .throwLead:
+                key = "throw"
+                effectKind = .throwCards
+            }
+        } else if wasLead && cards.count >= 2 {
+            key = "throw"
+            effectKind = .throwCards
+        }
+        if let key {
+            SoundPlayer.shared.announce(key)
+        }
+        if let effectKind {
+            let fx = PlayEffect(id: UUID(), kind: effectKind)
+            playEffect = fx
+            Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(1700))
+                if self?.playEffect?.id == fx.id {
+                    self?.playEffect = nil
+                }
+            }
+        }
+    }
 }

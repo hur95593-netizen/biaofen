@@ -79,6 +79,7 @@ final class OnlineViewModel: TableVM {
     var roomBadge: String? { roomCode.isEmpty ? nil : "房号 \(roomCode)" }
     var kittyIDs: Set<String> { Set(state?.kittyIds ?? []) }
     var buriedCards: [Card] { state?.buried ?? [] }
+    var playEffect: PlayEffect?
     private var resultHold = false // 最后一墩先亮牌,结算面板延后弹出
 
     var displayTrick: Trick?
@@ -296,8 +297,9 @@ final class OnlineViewModel: TableVM {
 
     private func applyState(_ s: RoomState) {
         let prevPlays = state?.trickPlays?.count ?? 0
-        if (s.trickPlays?.count ?? 0) > prevPlays {
+        if let plays = s.trickPlays, plays.count > prevPlays, let p = plays.last {
             SoundPlayer.shared.play("play")
+            playFeedback(cards: p.cards, wasLead: plays.count == 1, trump: s.trumpSuit ?? "")
         }
         if state?.result == nil, s.result != nil {
             // 终局:先把最后一墩亮 2 秒,再弹结算面板(面板里翻底牌)
