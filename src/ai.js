@@ -207,26 +207,29 @@ export function aiLead(g, seat) {
   const t = g.trumpSuit, hand = g.hands[seat];
   const seen = seenCards(g);
   const risky = group => ruffRisk(g, seat, group);
-  const throwCards = leadThrow(g, seat, seen);
-  if (throwCards) return throwCards; // 甩牌:必大的主一把甩掉,省时又稳
   const run = leadTractor(hand, t, seen);
   if (run) return run; // 拖拉机几乎无解,还能一手甩掉多张
   if (seat === g.declarer) {
     const draw = leadDrawTrump(g, seat, seen);
     if (draw) return draw;
   }
-  return leadBossPair(hand, t, seen, risky)
+  return leadBossPair(hand, t, seen, risky) // 对子按对子打:清对手的对子和大牌
+    || leadThrow(g, seat, seen)             // 结构牌打完,才轮到甩落单的必大主
     || leadBossSingle(hand, t, seen, risky)
-    || leadPartnerRuff(g, seat, seen) // 借刀杀人:甩分牌给队友的断门
+    || leadPartnerRuff(g, seat, seen)       // 借刀杀人:甩分牌给队友的断门
     || smallLead(hand, t);
 }
 
-// 甩牌:手里"必大"(没有任何未见主牌能大过)的主 ≥3 张 → 一把甩掉
+// 甩牌:只甩"落单"的必大主 —— 绝不拆对子(对子/拖拉机留着按结构清对手的大牌)。
+// ≥2 张一把甩;恰 1 张按普通单张兑现。
 function leadThrow(g, seat, seen) {
   const t = g.trumpSuit, hand = g.hands[seat];
-  const dominant = trumpOf(hand, t).filter(c => unseenHigher(c, seen, hand, t) === 0);
-  if (dominant.length < 3) return null; // 一两张不值得甩,留着按牌型打
-  return dominant;
+  const dominant = [];
+  for (const [, arr] of groupByKey(trumpOf(hand, t))) {
+    if (arr.length !== 1) continue; // 成对的主不参与甩牌
+    if (unseenHigher(arr[0], seen, hand, t) === 0) dominant.push(arr[0]);
+  }
+  return dominant.length ? dominant : null;
 }
 
 // 值得首攻的拖拉机:3 对及以上直接出;2 对要求顶张已无更高对(boss)

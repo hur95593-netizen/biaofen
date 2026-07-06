@@ -466,9 +466,6 @@ func AiLead(g *Game, seat int) []Card {
 	t, hand := g.TrumpSuit, g.Hands[seat]
 	seen := seenCards(g)
 	risky := func(group string) bool { return ruffRisk(g, seat, group) }
-	if throw := leadThrow(g, seat, seen); throw != nil {
-		return throw // 甩牌:必大的主一把甩掉,省时又稳
-	}
 	if run := leadTractor(hand, t, seen); run != nil {
 		return run // 拖拉机几乎无解,还能一手甩掉多张
 	}
@@ -478,7 +475,10 @@ func AiLead(g *Game, seat int) []Card {
 		}
 	}
 	if p := leadBossPair(hand, t, seen, risky); p != nil {
-		return p
+		return p // 对子按对子打:清对手的对子和大牌
+	}
+	if throw := leadThrow(g, seat, seen); throw != nil {
+		return throw // 结构牌打完,才轮到甩落单的必大主
 	}
 	if c := leadBossSingle(hand, t, seen, risky); c != nil {
 		return c
@@ -489,18 +489,22 @@ func AiLead(g *Game, seat int) []Card {
 	return smallLead(hand, t)
 }
 
-// 甩牌:手里"必大"(没有任何未见主牌能大过)的主 ≥3 张 → 一把甩掉
+// 甩牌:只甩"落单"的必大主 —— 绝不拆对子(对子/拖拉机留着按结构清对手的大牌)。
+// ≥2 张一把甩;恰 1 张按普通单张兑现。
 func leadThrow(g *Game, seat int, seen []Card) []Card {
 	t := g.TrumpSuit
 	hand := g.Hands[seat]
 	var dominant []Card
-	for _, c := range trumpOf(hand, t) {
-		if unseenHigher(c, seen, hand, t) == 0 {
-			dominant = append(dominant, c)
+	for _, e := range orderedByKey(trumpOf(hand, t)) {
+		if e.count != 1 {
+			continue // 成对的主不参与甩牌
+		}
+		if unseenHigher(e.card, seen, hand, t) == 0 {
+			dominant = append(dominant, e.card)
 		}
 	}
-	if len(dominant) < 3 {
-		return nil // 一两张不值得甩,留着按牌型打
+	if len(dominant) == 0 {
+		return nil
 	}
 	return dominant
 }
